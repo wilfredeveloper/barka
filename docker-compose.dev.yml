@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Note: Using external MongoDB Atlas cluster for development too
+
+  # Backend with development settings
+  backend:
+    build:
+      context: ./barka-backend
+      dockerfile: Dockerfile
+      target: base
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      MONGODB_URI: ${MONGODB_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: http://localhost:3000
+      ADK_BASE_URL: http://ovara-agent:5566
+      OVARA_API_URL: http://ovara-agent:5566
+    volumes:
+      - ./barka-backend:/app
+      - /app/node_modules
+      - backend_uploads_dev:/app/uploads
+    command: bun dev
+
+  # Frontend with development settings
+  frontend:
+    build:
+      context: ./barka-frontend
+      dockerfile: Dockerfile
+      target: deps
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:5000
+      NEXT_PUBLIC_WS_URL: ws://localhost:5000
+    volumes:
+      - ./barka-frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: bun dev
+
+  # Ovara Agent with development settings
+  ovara-agent:
+    build:
+      context: ./ovara-agent
+      dockerfile: Dockerfile
+    environment:
+      PYTHONPATH: /app
+      MONGODB_URI: ${MONGODB_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/service-account-key.json
+      CALENDAR_TOKEN_PATH: /app/secrets/calendar_token.json
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      QDRANT_URL: ${QDRANT_URL}
+      MEM0_API_KEY: ${MEM0_API_KEY}
+      MEM0_BASE_URL: ${MEM0_BASE_URL}
+      MEMORY_SERVICE_TYPE: ${MEMORY_SERVICE_TYPE}
+      MEMORY_ENCRYPTION_KEY: ${MEMORY_ENCRYPTION_KEY}
+      LOG_LEVEL: debug
+      DEBUG: "true"
+    volumes:
+      - ./ovara-agent:/app
+      - ./ovara-agent/service-account-key.json:/app/secrets/service-account-key.json:ro
+      - ./ovara-agent/credentials.json:/app/credentials.json:ro
+      - ./ovara-agent/docker-secrets/calendar_token.json:/app/secrets/calendar_token.json:ro
+      - ovara_logs_dev:/app/logs
+    working_dir: /app/app
+    command: python main.py
+
+volumes:
+  backend_uploads_dev:
+    name: barka-backend-uploads-dev
+  ovara_logs_dev:
+    name: barka-ovara-logs-dev

@@ -1,0 +1,36 @@
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+env/
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Google ADK
+service-account-key.json
+credentials.json
+
+# Logs
+*.log
+mcp_server_activity.log
+tests
+scripts

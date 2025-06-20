@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+  # Note: Using external MongoDB Atlas cluster from ovara-agent .env
+  # MongoDB service commented out since we're using MongoDB Atlas
+  # mongodb:
+  #   image: mongo:7.0
+  #   container_name: barka-mongodb
+  #   restart: unless-stopped
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+  #     MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password}
+  #     MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-orka_pro}
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #     - ./mongo-init:/docker-entrypoint-initdb.d
+  #   networks:
+  #     - barka-network
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
+
+  # Backend Service
+  backend:
+    build:
+      context: ./barka-backend
+      dockerfile: Dockerfile
+    container_name: barka-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 5000
+      MONGODB_URI: ${MONGODB_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      ADK_BASE_URL: http://ovara-agent:5566
+      OVARA_API_URL: http://ovara-agent:5566
+    ports:
+      - "5000:5000"
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - barka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./barka-frontend
+      dockerfile: Dockerfile
+    container_name: barka-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:5000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - barka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Ovara Agent Service
+  ovara-agent:
+    build:
+      context: ./ovara-agent
+      dockerfile: Dockerfile
+    container_name: barka-ovara-agent
+    restart: unless-stopped
+    environment:
+      PYTHONPATH: /app:/app/app
+      MONGODB_URI: ${MONGODB_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/service-account-key.json
+      CALENDAR_TOKEN_PATH: /app/secrets/calendar_token.json
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      QDRANT_URL: ${QDRANT_URL}
+      MEM0_API_KEY: ${MEM0_API_KEY}
+      MEM0_BASE_URL: ${MEM0_BASE_URL}
+      MEMORY_SERVICE_TYPE: ${MEMORY_SERVICE_TYPE}
+      MEMORY_ENCRYPTION_KEY: ${MEMORY_ENCRYPTION_KEY}
+      PORT: 5566
+      HOST: ${OVARA_HOST:-0.0.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SESSION_MAX_AGE_HOURS: ${SESSION_MAX_AGE_HOURS:-24}
+      SESSION_CLEANUP_INTERVAL_HOURS: ${SESSION_CLEANUP_INTERVAL_HOURS:-6}
+      MAX_CONVERSATION_HISTORY: ${MAX_CONVERSATION_HISTORY:-50}
+      MAX_MESSAGE_LENGTH: ${MAX_MESSAGE_LENGTH:-10000}
+      WEBSOCKET_TIMEOUT_SECONDS: ${WEBSOCKET_TIMEOUT_SECONDS:-300}
+      WEBSOCKET_PING_INTERVAL: ${WEBSOCKET_PING_INTERVAL:-30}
+      DEBUG: ${DEBUG:-false}
+      ENABLE_LEGACY_ENDPOINTS: ${ENABLE_LEGACY_ENDPOINTS:-true}
+      CONNECTION_MODE: ${CONNECTION_MODE:-websocket}
+      ENABLE_MEMORY_ENCRYPTION: ${ENABLE_MEMORY_ENCRYPTION:-true}
+      MEMORY_RETENTION_DAYS: ${MEMORY_RETENTION_DAYS:-365}
+      ENABLE_USER_MEMORY_CONTROL: ${ENABLE_USER_MEMORY_CONTROL:-true}
+    ports:
+      - "5566:5566"
+    volumes:
+      - ./ovara-agent/service-account-key.json:/app/secrets/service-account-key.json:ro
+      - ./ovara-agent/credentials.json:/app/credentials.json:ro
+      - ./ovara-agent/docker-secrets/calendar_token.json:/app/secrets/calendar_token.json:ro
+      - ovara_logs:/app/logs
+    networks:
+      - barka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5566/list-apps"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  barka-network:
+    driver: bridge
+    name: barka-network
+
+volumes:
+  backend_uploads:
+    name: barka-backend-uploads
+  ovara_logs:
+    name: barka-ovara-logs
