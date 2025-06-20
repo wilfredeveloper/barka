@@ -90,14 +90,23 @@ setup_environment() {
 # Function to build images
 build_images() {
     local service=${1:-}
+    local use_cache=${2:-false}
+
+    local build_args=""
+    if [ "$use_cache" = "false" ]; then
+        build_args="--no-cache"
+        local cache_msg="(no cache)"
+    else
+        local cache_msg="(using cache)"
+    fi
 
     if [ -n "$service" ]; then
-        print_status "Building Docker image for $service..."
-        docker-compose build --no-cache "$service"
+        print_status "Building Docker image for $service $cache_msg..."
+        docker-compose build $build_args "$service"
         print_success "$service image built successfully"
     else
-        print_status "Building all Docker images..."
-        docker-compose build --no-cache
+        print_status "Building all Docker images $cache_msg..."
+        docker-compose build $build_args
         print_success "All Docker images built successfully"
     fi
 }
@@ -186,45 +195,71 @@ cleanup() {
     print_success "Cleanup completed"
 }
 
+# Function to check if --cache option is present
+check_cache_option() {
+    for arg in "$@"; do
+        if [[ "$arg" == "--cache" ]]; then
+            echo "true"
+            return
+        fi
+    done
+    echo "false"
+}
+
+# Function to remove --cache from arguments
+remove_cache_option() {
+    local args=()
+    for arg in "$@"; do
+        if [[ "$arg" != "--cache" ]]; then
+            args+=("$arg")
+        fi
+    done
+    echo "${args[@]}"
+}
+
 # Main script logic
-case "${1:-deploy}" in
+# Parse cache option from all arguments
+USE_CACHE=$(check_cache_option "$@")
+FILTERED_ARGS=($(remove_cache_option "$@"))
+
+case "${FILTERED_ARGS[0]:-deploy}" in
     "deploy")
-        environment=${2:-development}
+        environment=${FILTERED_ARGS[1]:-development}
         check_prerequisites
         setup_environment
-        build_images
+        build_images "" "$USE_CACHE"
         deploy_services "$environment"
         check_health
         show_status
         ;;
     "build")
-        service=${2:-}
+        service=${FILTERED_ARGS[1]:-}
         check_prerequisites
         if [ -n "$service" ]; then
             # Validate service name
             if [[ "$service" =~ ^(frontend|backend|ovara-agent)$ ]]; then
-                build_images "$service"
+                build_images "$service" "$USE_CACHE"
             else
                 print_error "Invalid service name: $service"
                 print_error "Valid services: frontend, backend, ovara-agent"
                 exit 1
             fi
         else
-            build_images
+            build_images "" "$USE_CACHE"
         fi
         ;;
     "deploy-service")
-        service=${2:-}
-        environment=${3:-development}
+        service=${FILTERED_ARGS[1]:-}
+        environment=${FILTERED_ARGS[2]:-development}
         if [ -z "$service" ]; then
             print_error "Service name required for deploy-service command"
-            print_error "Usage: $0 deploy-service <frontend|backend|ovara-agent> [environment]"
+            print_error "Usage: $0 deploy-service <frontend|backend|ovara-agent> [environment] [--cache]"
             exit 1
         fi
         if [[ "$service" =~ ^(frontend|backend|ovara-agent)$ ]]; then
             check_prerequisites
             setup_environment
-            build_images "$service"
+            build_images "$service" "$USE_CACHE"
             deploy_services "$environment" "$service"
             check_health "$service"
             show_status
@@ -235,7 +270,7 @@ case "${1:-deploy}" in
         fi
         ;;
     "start")
-        environment=${2:-development}
+        environment=${FILTERED_ARGS[1]:-development}
         deploy_services "$environment"
         check_health
         show_status
@@ -244,23 +279,24 @@ case "${1:-deploy}" in
         stop_services
         ;;
     "restart")
-        environment=${2:-development}
+        environment=${FILTERED_ARGS[1]:-development}
         stop_services
         deploy_services "$environment"
         check_health
         show_status
         ;;
     "restart-service")
-        service=${2:-}
-        environment=${3:-development}
+        service=${FILTERED_ARGS[1]:-}
+        environment=${FILTERED_ARGS[2]:-development}
         if [ -z "$service" ]; then
             print_error "Service name required for restart-service command"
-            print_error "Usage: $0 restart-service <frontend|backend|ovara-agent> [environment]"
+            print_error "Usage: $0 restart-service <frontend|backend|ovara-agent> [environment] [--cache]"
             exit 1
         fi
         if [[ "$service" =~ ^(frontend|backend|ovara-agent)$ ]]; then
             print_status "Restarting $service..."
             docker-compose stop "$service"
+            build_images "$service" "$USE_CACHE"
             deploy_services "$environment" "$service"
             check_health "$service"
             show_status
@@ -274,7 +310,7 @@ case "${1:-deploy}" in
         show_status
         ;;
     "logs")
-        service=${2:-}
+        service=${FILTERED_ARGS[1]:-}
         if [ -n "$service" ]; then
             docker-compose logs -f "$service"
         else
@@ -285,7 +321,7 @@ case "${1:-deploy}" in
         cleanup
         ;;
     "help")
-        echo "Usage: $0 [command] [options]"
+        echo "Usage: $0 [command] [options] [--cache]"
         echo ""
         echo "Commands:"
         echo "  deploy [env]                    - Deploy all services (default: development)"
@@ -300,16 +336,26 @@ case "${1:-deploy}" in
         echo "  cleanup                         - Stop services and cleanup volumes"
         echo "  help                            - Show this help message"
         echo ""
+        echo "Options:"
+        echo "  --cache                         - Use Docker build cache (faster builds)"
+        echo ""
         echo "Services: frontend, backend, ovara-agent"
         echo "Environments: development, production"
         echo ""
         echo "Examples:"
-        echo "  $0 deploy                       # Deploy all services (development)"
-        echo "  $0 deploy production            # Deploy all services (production)"
-        echo "  $0 build frontend               # Build only frontend"
-        echo "  $0 deploy-service backend       # Deploy only backend (development)"
-        echo "  $0 deploy-service frontend prod # Deploy only frontend (production)"
-        echo "  $0 restart-service ovara-agent  # Restart only ovara-agent"
+        echo "  $0 deploy                       # Deploy all services (no cache)"
+        echo "  $0 deploy --cache               # Deploy all services (with cache)"
+        echo "  $0 deploy production --cache    # Deploy all services to production (with cache)"
+        echo "  $0 build frontend               # Build only frontend (no cache)"
+        echo "  $0 build frontend --cache       # Build only frontend (with cache)"
+        echo "  $0 deploy-service backend       # Deploy only backend (no cache)"
+        echo "  $0 deploy-service backend --cache # Deploy only backend (with cache)"
+        echo "  $0 deploy-service frontend prod --cache # Deploy frontend to production (with cache)"
+        echo "  $0 restart-service ovara-agent --cache  # Restart ovara-agent (with cache)"
+        echo ""
+        echo "Cache Behavior:"
+        echo "  Default: --no-cache (clean builds, slower but ensures latest changes)"
+        echo "  With --cache: Uses Docker layer cache (faster builds, may miss some changes)"
         ;;
     *)
         print_error "Unknown command: $1"
