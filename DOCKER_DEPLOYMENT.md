@@ -161,8 +161,15 @@ All services include health checks:
 # Deploy all services (production)
 ./deploy.sh deploy production
 
-# Build all images
+# Deploy all services with cache (faster)
+./deploy.sh deploy --cache
+./deploy.sh deploy production --cache
+
+# Build all images (clean build)
 ./deploy.sh build
+
+# Build all images with cache (faster)
+./deploy.sh build --cache
 
 # Start all services (without building)
 ./deploy.sh start
@@ -191,26 +198,56 @@ All services include health checks:
 For faster development when you only change one service:
 
 ```bash
-# Build only specific service
+# Build only specific service (clean build)
 ./deploy.sh build frontend
 ./deploy.sh build backend
 ./deploy.sh build ovara-agent
+
+# Build only specific service with cache (faster)
+./deploy.sh build frontend --cache
+./deploy.sh build backend --cache
+./deploy.sh build ovara-agent --cache
 
 # Deploy only specific service (development)
 ./deploy.sh deploy-service frontend
 ./deploy.sh deploy-service backend
 ./deploy.sh deploy-service ovara-agent
 
+# Deploy only specific service with cache (faster)
+./deploy.sh deploy-service frontend --cache
+./deploy.sh deploy-service backend --cache
+./deploy.sh deploy-service ovara-agent --cache
+
 # Deploy only specific service (production)
 ./deploy.sh deploy-service frontend production
 ./deploy.sh deploy-service backend production
 ./deploy.sh deploy-service ovara-agent production
 
+# Deploy only specific service (production with cache)
+./deploy.sh deploy-service frontend production --cache
+./deploy.sh deploy-service backend production --cache
+./deploy.sh deploy-service ovara-agent production --cache
+
 # Restart only specific service
 ./deploy.sh restart-service frontend
 ./deploy.sh restart-service backend production
 ./deploy.sh restart-service ovara-agent
+
+# Restart only specific service with cache (faster)
+./deploy.sh restart-service frontend --cache
+./deploy.sh restart-service backend production --cache
+./deploy.sh restart-service ovara-agent --cache
 ```
+
+### Cache Control Options
+
+All build and deploy commands support the `--cache` option for faster builds:
+
+| Command Type | Default (Clean Build) | With --cache (Faster) |
+|--------------|----------------------|----------------------|
+| **Docker Command** | `docker-compose build --no-cache` | `docker-compose build` |
+| **Build Time** | 3-10 minutes | 30 seconds - 3 minutes |
+| **Use Case** | First build, major changes | Incremental changes, development |
 
 ### Benefits of Single Service Deployment
 
@@ -218,6 +255,7 @@ For faster development when you only change one service:
 - 🎯 **Targeted deployment**: No unnecessary service restarts
 - 🔧 **Development efficiency**: Quick iteration on individual services
 - 💰 **Resource efficient**: Less CPU/memory usage during builds
+- 🚀 **Cache control**: Choose between clean builds and cached builds
 
 ### Manual Docker Commands
 
@@ -283,8 +321,11 @@ When developing, you typically work on one service at a time. Use these workflow
 # Initial setup - deploy all services
 ./deploy.sh deploy
 
-# Make frontend changes, then rebuild only frontend
+# Make frontend changes, then rebuild only frontend (clean build)
 ./deploy.sh deploy-service frontend
+
+# Make frontend changes, then rebuild only frontend (with cache - faster)
+./deploy.sh deploy-service frontend --cache
 
 # View frontend logs
 ./deploy.sh logs frontend
@@ -292,8 +333,11 @@ When developing, you typically work on one service at a time. Use these workflow
 
 #### Backend Development
 ```bash
-# Make backend changes, then rebuild only backend
+# Make backend changes, then rebuild only backend (clean build)
 ./deploy.sh deploy-service backend
+
+# Make backend changes, then rebuild only backend (with cache - faster)
+./deploy.sh deploy-service backend --cache
 
 # View backend logs
 ./deploy.sh logs backend
@@ -304,8 +348,11 @@ curl http://localhost:5000/health
 
 #### AI Agent Development
 ```bash
-# Make agent changes, then rebuild only agent
+# Make agent changes, then rebuild only agent (clean build)
 ./deploy.sh deploy-service ovara-agent
+
+# Make agent changes, then rebuild only agent (with cache - faster)
+./deploy.sh deploy-service ovara-agent --cache
 
 # View agent logs
 ./deploy.sh logs ovara-agent
@@ -316,18 +363,122 @@ curl http://localhost:5566/health
 
 #### Cross-Service Development
 ```bash
-# When changes affect multiple services
+# When changes affect multiple services (clean build)
 ./deploy.sh build frontend backend    # Build specific services
 ./deploy.sh deploy                    # Deploy all services
+
+# When changes affect multiple services (with cache - faster)
+./deploy.sh build frontend backend --cache
+./deploy.sh deploy --cache
+```
+
+#### Cache Strategy for Development
+
+**Use clean builds (default) when:**
+- First time building
+- Major dependency changes (package.json, requirements.txt)
+- Dockerfile changes
+- When builds are acting strange
+
+**Use cached builds (--cache) when:**
+- Small code changes
+- Quick testing iterations
+- No dependency changes
+- Development speed is priority
+
+```bash
+# Example development workflow
+./deploy.sh deploy                           # Initial clean deployment
+./deploy.sh deploy-service frontend --cache  # Quick frontend iteration
+./deploy.sh deploy-service backend --cache   # Quick backend iteration
+./deploy.sh deploy                           # Clean build when needed
 ```
 
 ### Time Comparison
 
-| Deployment Type | Time | Use Case |
-|----------------|------|----------|
-| Full deployment | 5-10 minutes | Initial setup, major changes |
-| Single service | 1-3 minutes | Individual service changes |
-| Service restart | 10-30 seconds | Configuration changes |
+| Deployment Type | Clean Build | With --cache | Use Case |
+|----------------|-------------|--------------|----------|
+| Full deployment | 5-10 minutes | 2-5 minutes | Initial setup, major changes |
+| Single service | 1-3 minutes | 30 seconds - 1 minute | Individual service changes |
+| Service restart | 10-30 seconds | 10-30 seconds | Configuration changes |
+| Build only | 2-8 minutes | 30 seconds - 2 minutes | Testing builds without deployment |
+
+## ⚡ Cache Control Best Practices
+
+### Understanding Docker Build Cache
+
+Docker build cache speeds up builds by reusing layers from previous builds. However, it may miss changes in some scenarios.
+
+### When to Use Clean Builds (Default)
+
+```bash
+# Use default (no --cache) for:
+./deploy.sh deploy                    # Production deployments
+./deploy.sh build frontend           # After dependency changes
+./deploy.sh deploy-service backend   # After Dockerfile modifications
+```
+
+**Scenarios requiring clean builds:**
+- **Dependency changes**: Updated package.json, requirements.txt, go.mod
+- **Dockerfile changes**: Modified build instructions
+- **Environment changes**: New environment variables affecting build
+- **Production deployments**: Ensure completely clean, reproducible builds
+- **Troubleshooting**: When cached builds behave unexpectedly
+
+### When to Use Cached Builds (--cache)
+
+```bash
+# Use --cache for:
+./deploy.sh deploy --cache                    # Development iterations
+./deploy.sh build frontend --cache           # Code-only changes
+./deploy.sh deploy-service backend --cache   # Quick testing
+```
+
+**Scenarios ideal for cached builds:**
+- **Code changes only**: Modified source files without dependency changes
+- **Development iterations**: Quick testing of changes
+- **Configuration changes**: Updated config files
+- **Documentation updates**: Non-functional changes
+- **Rapid prototyping**: Fast feedback cycles
+
+### Cache Control Examples
+
+```bash
+# Development workflow example
+./deploy.sh deploy                           # Initial clean deployment
+./deploy.sh deploy-service frontend --cache  # Quick frontend changes
+./deploy.sh deploy-service frontend --cache  # More frontend changes
+./deploy.sh build backend                    # Clean build after package.json change
+./deploy.sh deploy-service backend --cache   # Quick backend changes
+./deploy.sh deploy                           # Final clean deployment
+
+# Production deployment
+./deploy.sh deploy production                # Always use clean builds for production
+
+# Troubleshooting
+./deploy.sh build frontend                   # Clean build to resolve cache issues
+./deploy.sh deploy-service frontend          # Deploy with clean build
+```
+
+### Cache Troubleshooting
+
+If you experience issues with cached builds:
+
+1. **Try a clean build first:**
+   ```bash
+   ./deploy.sh build <service>  # Remove --cache
+   ```
+
+2. **Clear Docker cache manually:**
+   ```bash
+   docker system prune -f
+   docker builder prune -f
+   ```
+
+3. **Force rebuild specific service:**
+   ```bash
+   docker-compose build --no-cache <service>
+   ```
 
 ## �🔍 Monitoring and Troubleshooting
 
