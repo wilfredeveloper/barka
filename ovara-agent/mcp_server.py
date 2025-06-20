@@ -171,11 +171,11 @@ def create_project(name: str, user_id: str, description: Optional[str], client_i
         return create_response("error", error_message=str(e))
 
 def get_project(project_id: str, client_id: Optional[str], organization_id: Optional[str]) -> Dict:
-    """Get a project by ID with optional filtering by client and organization.
+    """Get comprehensive project details including team members, tasks, and documents.
 
-    This tool retrieves a single project from the database. The client_id and organization_id
-    parameters are OPTIONAL and used for access control/scoping - they are NOT required
-    for the tool to function successfully.
+    This tool retrieves a single project from the database with all related information
+    populated, similar to what the frontend receives when viewing a project detail page.
+    The client_id and organization_id parameters are OPTIONAL and used for access control/scoping.
 
     Args:
         project_id (str): Required. The MongoDB ObjectId of the project to retrieve.
@@ -185,37 +185,182 @@ def get_project(project_id: str, client_id: Optional[str], organization_id: Opti
                                        belongs to this organization. Used for access control.
 
     Returns:
-        Dict: Response with status 'success' and project data, or status 'error' with error message.
+        Dict: Response with status 'success' and comprehensive project data including:
+            - Basic project information (name, description, status, priority, etc.)
+            - Populated client information (if available)
+            - Populated organization information (if available)
+            - Project manager details (if assigned)
+            - Team members list with their details
+            - All project tasks with assignee information
+            - Linked documents (if any)
+            - Calendar events (if any)
+            - Progress metrics and statistics
+            - Status history and audit trail
 
     Usage Examples:
-        - get_project("507f1f77bcf86cd799439011") - Gets project by ID only
-        - get_project("507f1f77bcf86cd799439011", client_id="507f1f77bcf86cd799439012") - Gets project with client filter
-        - get_project("507f1f77bcf86cd799439011", organization_id="507f1f77bcf86cd799439013") - Gets project with org filter
-
-    Note: This tool does NOT require client_id to be provided. It will work with just project_id.
+        - get_project("507f1f77bcf86cd799439011") - Gets comprehensive project details
+        - get_project("507f1f77bcf86cd799439011", client_id="507f1f77bcf86cd799439012") - With client filter
+        - get_project("507f1f77bcf86cd799439011", organization_id="507f1f77bcf86cd799439013") - With org filter
     """
     try:
         if not validate_object_id(project_id):
             return create_response("error", error_message="Invalid project_id format")
-        
+
+        # Get collections
         projects = db_manager.get_collection("projects")
-        
+        tasks = db_manager.get_collection("tasks")
+        team_members = db_manager.get_collection("team_members")
+        clients = db_manager.get_collection("clients")
+        organizations = db_manager.get_collection("organizations")
+
+        # Build query with optional filters
         query = {"_id": ObjectId(project_id)}
         if client_id:
+            if not validate_object_id(client_id):
+                return create_response("error", error_message="Invalid client_id format")
             query["client"] = ObjectId(client_id)
         if organization_id:
+            if not validate_object_id(organization_id):
+                return create_response("error", error_message="Invalid organization_id format")
             query["organization"] = ObjectId(organization_id)
-            
+
+        # Get the base project
         project = projects.find_one(query)
-        
         if not project:
             return create_response("error", error_message="Project not found")
-            
-        logger.info(f"Retrieved project: {project_id}")
+
+        # Convert ObjectId to string for JSON serialization
+        project["_id"] = str(project["_id"])
+        project["id"] = project["_id"]  # Add id field for frontend compatibility
+
+        # Populate client information
+        if project.get("client"):
+            client_id_obj = project["client"]
+            if isinstance(client_id_obj, ObjectId):
+                client = clients.find_one({"_id": client_id_obj})
+                if client:
+                    client["_id"] = str(client["_id"])
+                    # If client has user reference, populate it
+                    if client.get("user") and isinstance(client["user"], ObjectId):
+                        users = db_manager.get_collection("users")
+                        user = users.find_one({"_id": client["user"]},
+                                            {"firstName": 1, "lastName": 1, "email": 1})
+                        if user:
+                            user["_id"] = str(user["_id"])
+                            client["user"] = user
+                    project["client"] = client
+
+        # Populate organization information
+        if project.get("organization"):
+            org_id_obj = project["organization"]
+            if isinstance(org_id_obj, ObjectId):
+                organization = organizations.find_one({"_id": org_id_obj})
+                if organization:
+                    organization["_id"] = str(organization["_id"])
+                    organization["id"] = organization["_id"]
+                    project["organization"] = organization
+
+        # Populate project manager
+        if project.get("projectManager"):
+            pm_id_obj = project["projectManager"]
+            if isinstance(pm_id_obj, ObjectId):
+                project_manager = team_members.find_one({"_id": pm_id_obj})
+                if project_manager:
+                    project_manager["_id"] = str(project_manager["_id"])
+                    project["projectManager"] = project_manager
+
+        # Populate team members
+        team_member_ids = project.get("teamMembers", [])
+        if team_member_ids:
+            team_member_object_ids = [ObjectId(tm_id) if isinstance(tm_id, str) else tm_id
+                                    for tm_id in team_member_ids if tm_id]
+            if team_member_object_ids:
+                team_cursor = team_members.find({"_id": {"$in": team_member_object_ids}})
+                team_list = []
+                for member in team_cursor:
+                    member["_id"] = str(member["_id"])
+                    team_list.append(member)
+                project["teamMembers"] = team_list
+
+        # Get all project tasks with assignee information
+        task_cursor = tasks.find({"project": ObjectId(project_id)})
+        task_list = []
+        for task in task_cursor:
+            task["_id"] = str(task["_id"])
+            task["id"] = task["_id"]
+
+            # Convert project reference to string
+            if task.get("project"):
+                task["project"] = str(task["project"])
+
+            # Populate assignedTo if present
+            if task.get("assignedTo"):
+                assignee_id = task["assignedTo"]
+                if isinstance(assignee_id, ObjectId):
+                    assignee = team_members.find_one({"_id": assignee_id},
+                                                   {"name": 1, "email": 1, "role": 1})
+                    if assignee:
+                        assignee["_id"] = str(assignee["_id"])
+                        task["assignedTo"] = assignee
+
+            # Convert other ObjectId fields to strings
+            for field in ["client", "organization", "createdBy", "updatedBy"]:
+                if task.get(field) and isinstance(task[field], ObjectId):
+                    task[field] = str(task[field])
+
+            task_list.append(task)
+
+        project["tasks"] = task_list
+
+        # Calculate progress metrics based on tasks
+        total_tasks = len(task_list)
+        completed_tasks = len([t for t in task_list if t.get("status") == "completed"])
+        in_progress_tasks = len([t for t in task_list if t.get("status") == "in_progress"])
+        not_started_tasks = len([t for t in task_list if t.get("status") == "not_started"])
+
+        completion_percentage = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+
+        project["progress"] = {
+            "completionPercentage": round(completion_percentage, 2),
+            "totalTasks": total_tasks,
+            "completedTasks": completed_tasks,
+            "inProgressTasks": in_progress_tasks,
+            "notStartedTasks": not_started_tasks
+        }
+
+        # Convert other ObjectId fields to strings
+        for field in ["client", "organization", "createdBy", "lastModifiedBy", "updatedBy"]:
+            if project.get(field) and isinstance(project[field], ObjectId):
+                project[field] = str(project[field])
+
+        # Handle documents and calendar events if they exist
+        if project.get("documents"):
+            for doc in project["documents"]:
+                if isinstance(doc.get("documentId"), ObjectId):
+                    doc["documentId"] = str(doc["documentId"])
+
+        if project.get("linkedDocuments"):
+            project["linkedDocuments"] = [str(doc_id) if isinstance(doc_id, ObjectId) else doc_id
+                                        for doc_id in project["linkedDocuments"]]
+
+        if project.get("calendarEvents"):
+            project["calendarEvents"] = [str(event_id) if isinstance(event_id, ObjectId) else event_id
+                                       for event_id in project["calendarEvents"]]
+
+        # Handle status history
+        if project.get("statusHistory"):
+            for status_entry in project["statusHistory"]:
+                if isinstance(status_entry.get("changedBy"), ObjectId):
+                    status_entry["changedBy"] = str(status_entry["changedBy"])
+                if status_entry.get("_id") and isinstance(status_entry["_id"], ObjectId):
+                    status_entry["_id"] = str(status_entry["_id"])
+                    status_entry["id"] = status_entry["_id"]
+
+        logger.info(f"Retrieved comprehensive project details: {project_id}")
         return create_response("success", project)
-        
+
     except Exception as e:
-        logger.error(f"Error getting project: {e}")
+        logger.error(f"Error getting project details: {e}")
         return create_response("error", error_message=str(e))
 
 def list_projects(organization_id: str) -> Dict:
@@ -395,28 +540,67 @@ def get_project_tasks(project_id: str) -> Dict:
         return create_response("error", error_message=str(e))
 
 # --- Task Operations Functions ---
-def create_task(title: str, user_id: str, client_id: str, organization_id: str,
+def create_task(title: str, user_id: str, organization_id: str,
                description: Optional[str], project_id: Optional[str],
-               assignee_id: Optional[str], status: Optional[str], priority: Optional[str],
+               client_id: Optional[str], assignee_id: Optional[str],
+               status: Optional[str], priority: Optional[str],
                due_date: Optional[str], estimated_hours: Optional[float],
                tags: Optional[List[str]]) -> Dict:
-    """Create a new task"""
+    """Create a new task with automatic client_id resolution from project
+
+    Args:
+        title: Task title/name
+        user_id: ID of user creating the task
+        organization_id: Required organization ID for scoping
+        description: Optional task description
+        project_id: Optional project ID - if provided, client_id will be resolved from project
+        client_id: Optional client ID - used if no project_id provided, or as override
+        assignee_id: Optional team member to assign task to
+        status: Task status (default: "not_started")
+        priority: Task priority (default: "medium")
+        due_date: Optional due date in ISO format
+        estimated_hours: Optional estimated hours for completion
+        tags: Optional list of tags
+
+    Returns:
+        Dict with success/error status and task data
+
+    Note: Either project_id or client_id should be provided. If project_id is given,
+          client_id will be automatically resolved from the project.
+    """
     try:
-        if not title or not user_id or not client_id or not organization_id:
-            return create_response("error", error_message="title, user_id, client_id, and organization_id are required")
+        if not title or not user_id or not organization_id:
+            return create_response("error", error_message="title, user_id, and organization_id are required")
 
         tasks = db_manager.get_collection("tasks")
+        projects = db_manager.get_collection("projects")
 
-        # Validate client_id and organization_id
-        if not validate_object_id(client_id):
-            return create_response("error", error_message="Invalid client_id format")
+        # Validate organization_id
         if not validate_object_id(organization_id):
             return create_response("error", error_message="Invalid organization_id format")
+
+        # Resolve client_id from project if project_id is provided
+        resolved_client_id = client_id
+        if project_id:
+            if not validate_object_id(project_id):
+                return create_response("error", error_message="Invalid project_id format")
+
+            project = projects.find_one({"_id": ObjectId(project_id)})
+            if not project:
+                return create_response("error", error_message="Project not found")
+
+            # Get client_id from project if it exists
+            if project.get("client"):
+                resolved_client_id = str(project["client"])
+                logger.info(f"Resolved client_id from project: {resolved_client_id}")
+
+        # Validate resolved client_id if present
+        if resolved_client_id and not validate_object_id(resolved_client_id):
+            return create_response("error", error_message="Invalid client_id format")
 
         task_data = {
             "name": title,  # Changed from "title" to "name" to match backend schema
             "description": description or "",
-            "client": ObjectId(client_id),  # Required field
             "organization": ObjectId(organization_id),  # Required field
             "status": status or "not_started",  # Changed from "todo" to "not_started" to match backend
             "priority": priority or "medium",
@@ -426,10 +610,12 @@ def create_task(title: str, user_id: str, client_id: str, organization_id: str,
             "updatedAt": datetime.now(timezone.utc)
         }
 
+        # Add client if resolved
+        if resolved_client_id:
+            task_data["client"] = ObjectId(resolved_client_id)
+
         # Add optional fields
         if project_id:
-            if not validate_object_id(project_id):
-                return create_response("error", error_message="Invalid project_id format")
             task_data["project"] = ObjectId(project_id)
         if assignee_id:
             if not validate_object_id(assignee_id):
@@ -708,16 +894,19 @@ def get_team_member(member_id: str, organization_id: Optional[str]) -> Dict:
         return create_response("error", error_message=str(e))
 
 def list_team_members(organization_id: str) -> Dict:
-    """List team members for an organization with default pagination
+    """List team members for an organization with nested task details including project information
 
     Args:
         organization_id: Required organization ID to scope team members
 
     Returns:
-        Dict containing team members list with pagination info or error message
+        Dict containing team members list with nested task details, project info, and pagination
     """
     try:
+        # Get collections
         team_members = db_manager.get_collection("team_members")
+        tasks = db_manager.get_collection("tasks")
+        projects = db_manager.get_collection("projects")
 
         # Set defaults for pagination
         page = 1
@@ -730,13 +919,121 @@ def list_team_members(organization_id: str) -> Dict:
                 {"organization": organization_id}
             ]
         }
-        # No additional filters - show all team members for the organization
 
         skip = (page - 1) * limit
         cursor = team_members.find(query).skip(skip).limit(limit).sort("createdAt", -1)
 
         member_list = list(cursor)
         total = team_members.count_documents(query)
+
+        # Enhance each team member with task details
+        for member in member_list:
+            member_id = member["_id"]
+
+            # Convert ObjectId to string for JSON serialization
+            member["_id"] = str(member["_id"])
+            member["id"] = member["_id"]  # Add id field for frontend compatibility
+
+            # Convert other ObjectId fields to strings
+            for field in ["organization", "client", "createdBy", "updatedBy"]:
+                if member.get(field) and isinstance(member[field], ObjectId):
+                    member[field] = str(member[field])
+
+            # Get all tasks assigned to this team member
+            assigned_tasks_cursor = tasks.find({
+                "assignedTo": ObjectId(member_id)
+            }).sort("dueDate", 1)  # Sort by due date
+
+            assigned_tasks = list(assigned_tasks_cursor)
+
+            # Enhance tasks with project information
+            enhanced_tasks = []
+            for task in assigned_tasks:
+                # Convert ObjectId fields to strings
+                task["_id"] = str(task["_id"])
+                task["id"] = task["_id"]
+
+                # Convert other ObjectId fields
+                for field in ["project", "assignedTo", "client", "organization", "createdBy", "updatedBy"]:
+                    if task.get(field) and isinstance(task[field], ObjectId):
+                        task[field] = str(task[field])
+
+                # Get project information if task belongs to a project
+                project_info = None
+                if task.get("project"):
+                    project = projects.find_one({"_id": ObjectId(task["project"])})
+                    if project:
+                        project_info = {
+                            "_id": str(project["_id"]),
+                            "id": str(project["_id"]),
+                            "name": project.get("name", "Unknown Project"),
+                            "status": project.get("status", "unknown"),
+                            "priority": project.get("priority", "medium"),
+                            "dueDate": project.get("dueDate"),
+                            "startDate": project.get("startDate")
+                        }
+
+                # Create enhanced task object
+                enhanced_task = {
+                    "_id": task["_id"],
+                    "id": task["id"],
+                    "name": task.get("name", task.get("title", "Untitled Task")),  # Handle both name and title fields
+                    "description": task.get("description", ""),
+                    "status": task.get("status", "not_started"),
+                    "priority": task.get("priority", "medium"),
+                    "dueDate": task.get("dueDate"),
+                    "estimatedHours": task.get("estimatedHours", 0),
+                    "tags": task.get("tags", []),
+                    "createdAt": task.get("createdAt"),
+                    "updatedAt": task.get("updatedAt"),
+                    "project": project_info,  # Nested project information
+                    "assignedTo": str(member_id)  # Reference back to team member
+                }
+
+                enhanced_tasks.append(enhanced_task)
+
+            # Calculate task statistics for this team member
+            total_tasks = len(enhanced_tasks)
+            completed_tasks = len([t for t in enhanced_tasks if t["status"] == "completed"])
+            in_progress_tasks = len([t for t in enhanced_tasks if t["status"] == "in_progress"])
+            not_started_tasks = len([t for t in enhanced_tasks if t["status"] == "not_started"])
+            overdue_tasks = 0
+
+            # Count overdue tasks
+            from datetime import datetime, timezone
+            current_date = datetime.now(timezone.utc)
+            for task in enhanced_tasks:
+                if (task.get("dueDate") and task["status"] != "completed" and
+                    isinstance(task["dueDate"], datetime) and task["dueDate"] < current_date):
+                    overdue_tasks += 1
+
+            # Add task information to team member
+            member["tasks"] = {
+                "assigned_tasks": enhanced_tasks,
+                "task_summary": {
+                    "total_tasks": total_tasks,
+                    "completed_tasks": completed_tasks,
+                    "in_progress_tasks": in_progress_tasks,
+                    "not_started_tasks": not_started_tasks,
+                    "overdue_tasks": overdue_tasks
+                }
+            }
+
+            # Update workload information based on current tasks
+            active_tasks = [t for t in enhanced_tasks if t["status"] in ["not_started", "in_progress"]]
+            total_hours_allocated = sum(t.get("estimatedHours", 0) for t in active_tasks)
+
+            # Get or create workload object
+            workload = member.get("workload", {})
+            workload.update({
+                "currentTasks": len(active_tasks),
+                "totalHoursAllocated": total_hours_allocated,
+                "utilizationPercentage": min(
+                    round((total_hours_allocated / 40) * 100) if total_hours_allocated > 0 else 0,
+                    100
+                )
+            })
+            member["workload"] = workload
 
         result = {
             "team_members": member_list,
@@ -748,11 +1045,11 @@ def list_team_members(organization_id: str) -> Dict:
             }
         }
 
-        logger.info(f"Listed {len(member_list)} team members (page {page})")
+        logger.info(f"Listed {len(member_list)} team members with task details (page {page})")
         return create_response("success", result)
 
     except Exception as e:
-        logger.error(f"Error listing team members: {e}")
+        logger.error(f"Error listing team members with task details: {e}")
         return create_response("error", error_message=str(e))
 
 def update_team_member(member_id: str, user_id: str, name: Optional[str], email: Optional[str],
@@ -1147,6 +1444,208 @@ def list_clients(organization_id: str) -> Dict:
         logger.error(f"Error listing clients: {e}")
         return create_response("error", error_message=str(e))
 
+def get_client(organization_id: str, client_id: Optional[str] = None,
+               client_name: Optional[str] = None, project_id: Optional[str] = None) -> Dict:
+    """Get a single client by ID, name, or project association with comprehensive details
+
+    This tool provides flexible client lookup capabilities for the project manager agent.
+    It can find clients by direct ID, by name (first/last name or email), or by project association.
+
+    Args:
+        organization_id: Required organization ID to scope the search
+        client_id: Optional direct client ID lookup
+        client_name: Optional client name search (searches firstName, lastName, email)
+        project_id: Optional project ID to find the client associated with that project
+
+    Returns:
+        Dict with comprehensive client information including user details, organization info,
+        associated projects, and contact information
+
+    Usage Examples:
+        - get_client(org_id, client_id="123") - Direct ID lookup
+        - get_client(org_id, client_name="John Doe") - Name search
+        - get_client(org_id, client_name="john@example.com") - Email search
+        - get_client(org_id, project_id="456") - Find client by project
+
+    Note: Provide only ONE of client_id, client_name, or project_id for best results.
+    """
+    try:
+        if not organization_id:
+            return create_response("error", error_message="organization_id is required")
+
+        if not validate_object_id(organization_id):
+            return create_response("error", error_message="Invalid organization_id format")
+
+        # Validate that at least one search parameter is provided
+        search_params = [client_id, client_name, project_id]
+        provided_params = [p for p in search_params if p]
+
+        if len(provided_params) == 0:
+            return create_response("error", error_message="At least one of client_id, client_name, or project_id must be provided")
+
+        if len(provided_params) > 1:
+            return create_response("error", error_message="Please provide only one search parameter: client_id, client_name, or project_id")
+
+        clients = db_manager.get_collection("clients")
+        users = db_manager.get_collection("users")
+        organizations = db_manager.get_collection("organizations")
+        projects = db_manager.get_collection("projects")
+
+        client = None
+        search_method = None
+
+        # Method 1: Direct client_id lookup
+        if client_id:
+            if not validate_object_id(client_id):
+                return create_response("error", error_message="Invalid client_id format")
+
+            client = clients.find_one({
+                "_id": ObjectId(client_id),
+                "organization": ObjectId(organization_id)
+            })
+            search_method = "client_id"
+
+        # Method 2: Find client by project association
+        elif project_id:
+            if not validate_object_id(project_id):
+                return create_response("error", error_message="Invalid project_id format")
+
+            # First find the project to get its client
+            project = projects.find_one({
+                "_id": ObjectId(project_id),
+                "organization": ObjectId(organization_id)
+            })
+
+            if not project:
+                return create_response("error", error_message="Project not found")
+
+            if not project.get("client"):
+                return create_response("error", error_message="Project has no associated client")
+
+            # Now get the client
+            client = clients.find_one({
+                "_id": project["client"],
+                "organization": ObjectId(organization_id)
+            })
+            search_method = "project_id"
+
+        # Method 3: Search by client name (firstName, lastName, or email)
+        elif client_name:
+            search_term = client_name.strip()
+
+            # First, get all clients in the organization
+            org_clients = list(clients.find({"organization": ObjectId(organization_id)}))
+
+            # Search through clients and their associated users
+            for potential_client in org_clients:
+                if potential_client.get("user"):
+                    user = users.find_one({"_id": ObjectId(potential_client["user"])})
+                    if user:
+                        # Check various name fields
+                        first_name = user.get("firstName", "").lower()
+                        last_name = user.get("lastName", "").lower()
+                        email = user.get("email", "").lower()
+                        full_name = f"{first_name} {last_name}".strip()
+
+                        search_lower = search_term.lower()
+
+                        # Match against various combinations
+                        if (search_lower in first_name or
+                            search_lower in last_name or
+                            search_lower in full_name or
+                            search_lower in email or
+                            first_name.startswith(search_lower) or
+                            last_name.startswith(search_lower) or
+                            email == search_lower):
+                            client = potential_client
+                            break
+
+            search_method = "client_name"
+
+        if not client:
+            if search_method == "client_id":
+                return create_response("error", error_message="Client not found with the provided client_id")
+            elif search_method == "project_id":
+                return create_response("error", error_message="No client found for the specified project")
+            elif search_method == "client_name":
+                return create_response("error", error_message=f"No client found matching name '{client_name}'")
+            else:
+                return create_response("error", error_message="Client not found")
+
+        # Enhance client with comprehensive information
+        enhanced_client = dict(client)
+        enhanced_client["_id"] = str(enhanced_client["_id"])
+        enhanced_client["id"] = enhanced_client["_id"]
+
+        # Convert ObjectId fields to strings
+        for field in ["organization", "user", "createdBy", "updatedBy"]:
+            if enhanced_client.get(field) and isinstance(enhanced_client[field], ObjectId):
+                enhanced_client[field] = str(enhanced_client[field])
+
+        # Populate user information (excluding sensitive fields)
+        if enhanced_client.get("user"):
+            user = users.find_one(
+                {"_id": ObjectId(enhanced_client["user"])},
+                {"password": 0, "resetPasswordToken": 0, "resetPasswordExpire": 0}
+            )
+            if user:
+                user["_id"] = str(user["_id"])
+                user["id"] = user["_id"]
+                enhanced_client["userInfo"] = user
+
+        # Populate organization information
+        if enhanced_client.get("organization"):
+            organization = organizations.find_one({"_id": ObjectId(enhanced_client["organization"])})
+            if organization:
+                organization["_id"] = str(organization["_id"])
+                organization["id"] = organization["_id"]
+                enhanced_client["organizationInfo"] = {
+                    "_id": organization["_id"],
+                    "id": organization["_id"],
+                    "name": organization.get("name", "Unknown"),
+                    "contactEmail": organization.get("contactEmail", ""),
+                    "website": organization.get("website", "")
+                }
+
+        # Get associated projects for this client
+        client_projects = list(projects.find({
+            "client": ObjectId(enhanced_client["_id"]),
+            "organization": ObjectId(organization_id)
+        }))
+
+        # Enhance project information
+        enhanced_projects = []
+        for project in client_projects:
+            project_info = {
+                "_id": str(project["_id"]),
+                "id": str(project["_id"]),
+                "name": project.get("name", "Untitled Project"),
+                "status": project.get("status", "unknown"),
+                "priority": project.get("priority", "medium"),
+                "startDate": project.get("startDate"),
+                "dueDate": project.get("dueDate"),
+                "budget": project.get("budget"),
+                "currency": project.get("currency", "USD")
+            }
+            enhanced_projects.append(project_info)
+
+        enhanced_client["associatedProjects"] = enhanced_projects
+        enhanced_client["projectCount"] = len(enhanced_projects)
+
+        # Add search metadata
+        enhanced_client["searchMetadata"] = {
+            "searchMethod": search_method,
+            "searchTerm": client_id or client_name or project_id,
+            "foundAt": datetime.now(timezone.utc).isoformat()
+        }
+
+        logger.info(f"Found client via {search_method}: {enhanced_client.get('_id')}")
+        return create_response("success", enhanced_client)
+
+    except Exception as e:
+        logger.error(f"Error getting client: {e}")
+        return create_response("error", error_message=str(e))
+
 # --- Analytics Operations Functions ---
 def get_project_progress(organization_id: str, project_id: Optional[str] = None) -> Dict:
     """Get project progress analytics for an organization
@@ -1315,8 +1814,9 @@ ADK_PROJECT_TOOLS = {
     # Search Operations (1 tool)
     "cross_search": FunctionTool(func=cross_search),
 
-    # Client Operations (1 tool)
+    # Client Operations (2 tools)
     "list_clients": FunctionTool(func=list_clients),
+    "get_client": FunctionTool(func=get_client),
 
     # Analytics Operations (2 tools)
     "get_project_progress": FunctionTool(func=get_project_progress),

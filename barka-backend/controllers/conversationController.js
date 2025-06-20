@@ -294,7 +294,7 @@ exports.createConversation = async (req, res) => {
 
         // For org_admin users, set client_id to user_id to ensure Jarvis agent functionality
         if (req.user.role === 'org_admin') {
-          initialState.client_id = req.user.id;
+          initialState.client_id = {};
           console.log(`Setting client_id to user_id for org_admin: ${req.user.id}`);
         }
       }
