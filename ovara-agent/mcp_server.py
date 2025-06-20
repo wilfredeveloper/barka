@@ -364,13 +364,20 @@ def get_project(project_id: str, client_id: Optional[str], organization_id: Opti
         return create_response("error", error_message=str(e))
 
 def list_projects(organization_id: str) -> Dict:
-    """List projects for an organization with default pagination
+    """List projects for an organization with default pagination and resolved entity names
 
     Args:
         organization_id: Required organization ID to scope projects
+
+    Returns:
+        Dict containing projects with both IDs and human-readable names for all entity references
     """
     try:
+        # Get collections
         projects = db_manager.get_collection("projects")
+        clients = db_manager.get_collection("clients")
+        team_members = db_manager.get_collection("team_members")
+        users = db_manager.get_collection("users")
 
         # Set defaults for pagination
         page = 1
@@ -395,10 +402,69 @@ def list_projects(organization_id: str) -> Dict:
         project_list = list(cursor)
         total = projects.count_documents(query)
 
+        # Enhance each project with resolved names
+        for project in project_list:
+            # Convert ObjectId to string for JSON serialization
+            project["_id"] = str(project["_id"])
+            project["id"] = project["_id"]  # Add id field for frontend compatibility
+
+            # Resolve client information
+            if project.get("client"):
+                client_id = project["client"]
+                if isinstance(client_id, ObjectId):
+                    client = clients.find_one({"_id": client_id})
+                    if client:
+                        # Get user information for client name
+                        client_name = "Unknown Client"
+                        if client.get("user"):
+                            user = users.find_one({"_id": client["user"]},
+                                                {"firstName": 1, "lastName": 1, "email": 1})
+                            if user:
+                                first_name = user.get("firstName", "")
+                                last_name = user.get("lastName", "")
+                                client_name = f"{first_name} {last_name}".strip() or user.get("email", "Unknown Client")
+
+                        # Store both ID and name
+                        project["client_id"] = str(client_id)
+                        project["client_name"] = client_name
+                        project["client"] = str(client_id)  # Keep original field as string
+
+            # Resolve project manager information
+            if project.get("projectManager"):
+                pm_id = project["projectManager"]
+                if isinstance(pm_id, ObjectId):
+                    pm = team_members.find_one({"_id": pm_id})
+                    if pm:
+                        project["project_manager_id"] = str(pm_id)
+                        project["project_manager_name"] = pm.get("name", "Unknown Manager")
+                        project["projectManager"] = str(pm_id)  # Keep original field as string
+
+            # Resolve team members information
+            team_member_ids = project.get("teamMembers", [])
+            if team_member_ids:
+                team_member_object_ids = [ObjectId(tm_id) if isinstance(tm_id, str) else tm_id
+                                        for tm_id in team_member_ids if tm_id]
+                if team_member_object_ids:
+                    team_cursor = team_members.find({"_id": {"$in": team_member_object_ids}})
+                    team_names = []
+                    team_ids = []
+                    for member in team_cursor:
+                        team_ids.append(str(member["_id"]))
+                        team_names.append(member.get("name", "Unknown Member"))
+
+                    project["team_member_ids"] = team_ids
+                    project["team_member_names"] = team_names
+                    project["teamMembers"] = team_ids  # Keep original field as string array
+
+            # Convert other ObjectId fields to strings
+            for field in ["organization", "createdBy", "lastModifiedBy", "updatedBy"]:
+                if project.get(field) and isinstance(project[field], ObjectId):
+                    project[field] = str(project[field])
+
         # Debug logging
         logger.info(f"Found {total} total projects matching query")
         logger.info(f"Returning {len(project_list)} projects for page {page}")
-        
+
         result = {
             "projects": project_list,
             "pagination": {
@@ -408,10 +474,10 @@ def list_projects(organization_id: str) -> Dict:
                 "pages": (total + limit - 1) // limit
             }
         }
-        
-        logger.info(f"Listed {len(project_list)} projects (page {page})")
+
+        logger.info(f"Listed {len(project_list)} projects with resolved names (page {page})")
         return create_response("success", result)
-        
+
     except Exception as e:
         logger.error(f"Error listing projects: {e}")
         return create_response("error", error_message=str(e))
@@ -661,16 +727,21 @@ def get_task(task_id: str, organization_id: Optional[str]) -> Dict:
         return create_response("error", error_message=str(e))
 
 def list_tasks(organization_id: str) -> Dict:
-    """List tasks for an organization with default pagination
+    """List tasks for an organization with default pagination and resolved entity names
 
     Args:
         organization_id: Required organization ID to scope tasks
 
     Returns:
-        Dict containing tasks list with pagination info or error message
+        Dict containing tasks with both IDs and human-readable names for all entity references
     """
     try:
+        # Get collections
         tasks = db_manager.get_collection("tasks")
+        projects = db_manager.get_collection("projects")
+        team_members = db_manager.get_collection("team_members")
+        clients = db_manager.get_collection("clients")
+        users = db_manager.get_collection("users")
 
         # Set defaults for pagination
         page = 1
@@ -690,6 +761,57 @@ def list_tasks(organization_id: str) -> Dict:
         task_list = list(cursor)
         total = tasks.count_documents(query)
 
+        # Enhance each task with resolved names
+        for task in task_list:
+            # Convert ObjectId to string for JSON serialization
+            task["_id"] = str(task["_id"])
+            task["id"] = task["_id"]  # Add id field for frontend compatibility
+
+            # Resolve assignee information
+            if task.get("assignedTo"):
+                assignee_id = task["assignedTo"]
+                if isinstance(assignee_id, ObjectId):
+                    assignee = team_members.find_one({"_id": assignee_id})
+                    if assignee:
+                        task["assignee_id"] = str(assignee_id)
+                        task["assignee_name"] = assignee.get("name", "Unknown Assignee")
+                        task["assignedTo"] = str(assignee_id)  # Keep original field as string
+
+            # Resolve project information
+            if task.get("project"):
+                project_id = task["project"]
+                if isinstance(project_id, ObjectId):
+                    project = projects.find_one({"_id": project_id})
+                    if project:
+                        task["project_id"] = str(project_id)
+                        task["project_name"] = project.get("name", "Unknown Project")
+                        task["project"] = str(project_id)  # Keep original field as string
+
+            # Resolve client information
+            if task.get("client"):
+                client_id = task["client"]
+                if isinstance(client_id, ObjectId):
+                    client = clients.find_one({"_id": client_id})
+                    if client:
+                        # Get user information for client name
+                        client_name = "Unknown Client"
+                        if client.get("user"):
+                            user = users.find_one({"_id": client["user"]},
+                                                {"firstName": 1, "lastName": 1, "email": 1})
+                            if user:
+                                first_name = user.get("firstName", "")
+                                last_name = user.get("lastName", "")
+                                client_name = f"{first_name} {last_name}".strip() or user.get("email", "Unknown Client")
+
+                        task["client_id"] = str(client_id)
+                        task["client_name"] = client_name
+                        task["client"] = str(client_id)  # Keep original field as string
+
+            # Convert other ObjectId fields to strings
+            for field in ["organization", "createdBy", "updatedBy"]:
+                if task.get(field) and isinstance(task[field], ObjectId):
+                    task[field] = str(task[field])
+
         result = {
             "tasks": task_list,
             "pagination": {
@@ -700,7 +822,7 @@ def list_tasks(organization_id: str) -> Dict:
             }
         }
 
-        logger.info(f"Listed {len(task_list)} tasks for organization {organization_id} (page {page})")
+        logger.info(f"Listed {len(task_list)} tasks with resolved names for organization {organization_id} (page {page})")
         return create_response("success", result)
 
     except Exception as e:
@@ -926,6 +1048,10 @@ def list_team_members(organization_id: str) -> Dict:
         member_list = list(cursor)
         total = team_members.count_documents(query)
 
+        # Get additional collections for name resolution
+        clients = db_manager.get_collection("clients")
+        users = db_manager.get_collection("users")
+
         # Enhance each team member with task details
         for member in member_list:
             member_id = member["_id"]
@@ -946,7 +1072,7 @@ def list_team_members(organization_id: str) -> Dict:
 
             assigned_tasks = list(assigned_tasks_cursor)
 
-            # Enhance tasks with project information
+            # Enhance tasks with project and client information
             enhanced_tasks = []
             for task in assigned_tasks:
                 # Convert ObjectId fields to strings
@@ -973,6 +1099,27 @@ def list_team_members(organization_id: str) -> Dict:
                             "startDate": project.get("startDate")
                         }
 
+                # Get client information if task belongs to a client
+                client_info = None
+                if task.get("client"):
+                    client = clients.find_one({"_id": ObjectId(task["client"])})
+                    if client:
+                        # Get user information for client name
+                        client_name = "Unknown Client"
+                        if client.get("user"):
+                            user = users.find_one({"_id": client["user"]},
+                                                {"firstName": 1, "lastName": 1, "email": 1})
+                            if user:
+                                first_name = user.get("firstName", "")
+                                last_name = user.get("lastName", "")
+                                client_name = f"{first_name} {last_name}".strip() or user.get("email", "Unknown Client")
+
+                        client_info = {
+                            "_id": str(client["_id"]),
+                            "id": str(client["_id"]),
+                            "name": client_name
+                        }
+
                 # Create enhanced task object
                 enhanced_task = {
                     "_id": task["_id"],
@@ -987,6 +1134,7 @@ def list_team_members(organization_id: str) -> Dict:
                     "createdAt": task.get("createdAt"),
                     "updatedAt": task.get("updatedAt"),
                     "project": project_info,  # Nested project information
+                    "client": client_info,    # Nested client information
                     "assignedTo": str(member_id)  # Reference back to team member
                 }
 
