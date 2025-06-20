@@ -172,3 +172,6 @@ out/
 mongodb_data/
 backend_uploads/
 ovara_logs/
+
+# Git backup directory (used during monorepo migration)
+.git-backup/
