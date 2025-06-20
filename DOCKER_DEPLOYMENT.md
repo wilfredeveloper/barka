@@ -152,31 +152,31 @@ All services include health checks:
 
 ## 🛠️ Deployment Commands
 
-### Basic Commands
+### Full System Deployment
 
 ```bash
-# Deploy all services
+# Deploy all services (development)
 ./deploy.sh deploy
 
-# Deploy for production
+# Deploy all services (production)
 ./deploy.sh deploy production
 
-# Build images only
+# Build all images
 ./deploy.sh build
 
-# Start services (without building)
+# Start all services (without building)
 ./deploy.sh start
 
-# Stop services
+# Stop all services
 ./deploy.sh stop
 
-# Restart services
+# Restart all services
 ./deploy.sh restart
 
 # Show service status
 ./deploy.sh status
 
-# View logs
+# View logs (all services)
 ./deploy.sh logs
 
 # View logs for specific service
@@ -186,26 +186,150 @@ All services include health checks:
 ./deploy.sh cleanup
 ```
 
-### Manual Docker Commands
+### Single Service Deployment (⚡ Fast Rebuilds)
+
+For faster development when you only change one service:
 
 ```bash
-# Build and start development
+# Build only specific service
+./deploy.sh build frontend
+./deploy.sh build backend
+./deploy.sh build ovara-agent
+
+# Deploy only specific service (development)
+./deploy.sh deploy-service frontend
+./deploy.sh deploy-service backend
+./deploy.sh deploy-service ovara-agent
+
+# Deploy only specific service (production)
+./deploy.sh deploy-service frontend production
+./deploy.sh deploy-service backend production
+./deploy.sh deploy-service ovara-agent production
+
+# Restart only specific service
+./deploy.sh restart-service frontend
+./deploy.sh restart-service backend production
+./deploy.sh restart-service ovara-agent
+```
+
+### Benefits of Single Service Deployment
+
+- ⚡ **Faster builds**: Only rebuild the service you changed
+- 🎯 **Targeted deployment**: No unnecessary service restarts
+- 🔧 **Development efficiency**: Quick iteration on individual services
+- 💰 **Resource efficient**: Less CPU/memory usage during builds
+
+### Manual Docker Commands
+
+#### Full System Commands
+```bash
+# Build and start all services (development)
 docker-compose up -d --build
 
-# Build and start production
+# Build and start all services (production)
 docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
-# View logs
+# View logs (all services)
 docker-compose logs -f
 
-# Stop services
+# Stop all services
 docker-compose down
 
 # Stop and remove volumes
 docker-compose down -v
 ```
 
-## 🔍 Monitoring and Troubleshooting
+#### Single Service Commands
+```bash
+# Build specific service
+docker-compose build frontend
+docker-compose build backend
+docker-compose build ovara-agent
+
+# Start specific service
+docker-compose up -d frontend
+docker-compose up -d backend
+docker-compose up -d ovara-agent
+
+# Restart specific service
+docker-compose restart frontend
+docker-compose restart backend
+docker-compose restart ovara-agent
+
+# Stop specific service
+docker-compose stop frontend
+docker-compose stop backend
+docker-compose stop ovara-agent
+
+# View logs for specific service
+docker-compose logs -f frontend
+docker-compose logs -f backend
+docker-compose logs -f ovara-agent
+
+# Rebuild and restart specific service
+docker-compose up -d --build frontend
+docker-compose up -d --build backend
+docker-compose up -d --build ovara-agent
+```
+
+## � Development Workflow
+
+### Efficient Development with Single Service Deployment
+
+When developing, you typically work on one service at a time. Use these workflows for maximum efficiency:
+
+#### Frontend Development
+```bash
+# Initial setup - deploy all services
+./deploy.sh deploy
+
+# Make frontend changes, then rebuild only frontend
+./deploy.sh deploy-service frontend
+
+# View frontend logs
+./deploy.sh logs frontend
+```
+
+#### Backend Development
+```bash
+# Make backend changes, then rebuild only backend
+./deploy.sh deploy-service backend
+
+# View backend logs
+./deploy.sh logs backend
+
+# Test backend health
+curl http://localhost:5000/health
+```
+
+#### AI Agent Development
+```bash
+# Make agent changes, then rebuild only agent
+./deploy.sh deploy-service ovara-agent
+
+# View agent logs
+./deploy.sh logs ovara-agent
+
+# Test agent health
+curl http://localhost:5566/health
+```
+
+#### Cross-Service Development
+```bash
+# When changes affect multiple services
+./deploy.sh build frontend backend    # Build specific services
+./deploy.sh deploy                    # Deploy all services
+```
+
+### Time Comparison
+
+| Deployment Type | Time | Use Case |
+|----------------|------|----------|
+| Full deployment | 5-10 minutes | Initial setup, major changes |
+| Single service | 1-3 minutes | Individual service changes |
+| Service restart | 10-30 seconds | Configuration changes |
+
+## �🔍 Monitoring and Troubleshooting
 
 ### Check Service Status
 
@@ -216,6 +340,7 @@ docker-compose ps
 # Check service health
 docker-compose exec backend curl -f http://localhost:5000/
 docker-compose exec frontend curl -f http://localhost:3000/
+docker-compose exec ovara-agent curl -f http://localhost:5566/health
 ```
 
 ### View Logs
