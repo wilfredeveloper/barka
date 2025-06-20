@@ -89,46 +89,73 @@ setup_environment() {
 
 # Function to build images
 build_images() {
-    print_status "Building Docker images..."
-    
-    docker-compose build --no-cache
-    
-    print_success "Docker images built successfully"
+    local service=${1:-}
+
+    if [ -n "$service" ]; then
+        print_status "Building Docker image for $service..."
+        docker-compose build --no-cache "$service"
+        print_success "$service image built successfully"
+    else
+        print_status "Building all Docker images..."
+        docker-compose build --no-cache
+        print_success "All Docker images built successfully"
+    fi
 }
 
 # Function to deploy services
 deploy_services() {
     local environment=${1:-development}
-    
-    print_status "Deploying services for $environment environment..."
-    
-    if [ "$environment" = "production" ]; then
-        docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+    local service=${2:-}
+
+    if [ -n "$service" ]; then
+        print_status "Deploying $service for $environment environment..."
+        if [ "$environment" = "production" ]; then
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d "$service"
+        else
+            docker-compose up -d "$service"
+        fi
+        print_success "$service deployed successfully"
     else
-        docker-compose up -d
+        print_status "Deploying all services for $environment environment..."
+        if [ "$environment" = "production" ]; then
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+        else
+            docker-compose up -d
+        fi
+        print_success "All services deployed successfully"
     fi
-    
-    print_success "Services deployed successfully"
 }
 
 # Function to check service health
 check_health() {
+    local service=${1:-}
+
     print_status "Checking service health..."
-    
+
     # Wait for services to start
     sleep 10
-    
-    # Check each service (using external MongoDB Atlas)
-    services=("backend" "frontend" "ovara-agent")
 
-    for service in "${services[@]}"; do
+    if [ -n "$service" ]; then
+        # Check specific service
         if docker-compose ps | grep -q "$service.*Up"; then
             print_success "$service is running"
         else
             print_error "$service is not running properly"
             docker-compose logs "$service"
         fi
-    done
+    else
+        # Check all services (using external MongoDB Atlas)
+        services=("backend" "frontend" "ovara-agent")
+
+        for svc in "${services[@]}"; do
+            if docker-compose ps | grep -q "$svc.*Up"; then
+                print_success "$svc is running"
+            else
+                print_error "$svc is not running properly"
+                docker-compose logs "$svc"
+            fi
+        done
+    fi
 }
 
 # Function to show service status
@@ -171,8 +198,41 @@ case "${1:-deploy}" in
         show_status
         ;;
     "build")
+        service=${2:-}
         check_prerequisites
-        build_images
+        if [ -n "$service" ]; then
+            # Validate service name
+            if [[ "$service" =~ ^(frontend|backend|ovara-agent)$ ]]; then
+                build_images "$service"
+            else
+                print_error "Invalid service name: $service"
+                print_error "Valid services: frontend, backend, ovara-agent"
+                exit 1
+            fi
+        else
+            build_images
+        fi
+        ;;
+    "deploy-service")
+        service=${2:-}
+        environment=${3:-development}
+        if [ -z "$service" ]; then
+            print_error "Service name required for deploy-service command"
+            print_error "Usage: $0 deploy-service <frontend|backend|ovara-agent> [environment]"
+            exit 1
+        fi
+        if [[ "$service" =~ ^(frontend|backend|ovara-agent)$ ]]; then
+            check_prerequisites
+            setup_environment
+            build_images "$service"
+            deploy_services "$environment" "$service"
+            check_health "$service"
+            show_status
+        else
+            print_error "Invalid service name: $service"
+            print_error "Valid services: frontend, backend, ovara-agent"
+            exit 1
+        fi
         ;;
     "start")
         environment=${2:-development}
@@ -189,6 +249,26 @@ case "${1:-deploy}" in
         deploy_services "$environment"
         check_health
         show_status
+        ;;
+    "restart-service")
+        service=${2:-}
+        environment=${3:-development}
+        if [ -z "$service" ]; then
+            print_error "Service name required for restart-service command"
+            print_error "Usage: $0 restart-service <frontend|backend|ovara-agent> [environment]"
+            exit 1
+        fi
+        if [[ "$service" =~ ^(frontend|backend|ovara-agent)$ ]]; then
+            print_status "Restarting $service..."
+            docker-compose stop "$service"
+            deploy_services "$environment" "$service"
+            check_health "$service"
+            show_status
+        else
+            print_error "Invalid service name: $service"
+            print_error "Valid services: frontend, backend, ovara-agent"
+            exit 1
+        fi
         ;;
     "status")
         show_status
@@ -208,17 +288,28 @@ case "${1:-deploy}" in
         echo "Usage: $0 [command] [options]"
         echo ""
         echo "Commands:"
-        echo "  deploy [env]    - Deploy all services (default: development)"
-        echo "  build          - Build Docker images"
-        echo "  start [env]    - Start services without building"
-        echo "  stop           - Stop all services"
-        echo "  restart [env]  - Restart all services"
-        echo "  status         - Show service status"
-        echo "  logs [service] - Show logs (optionally for specific service)"
-        echo "  cleanup        - Stop services and cleanup volumes"
-        echo "  help           - Show this help message"
+        echo "  deploy [env]                    - Deploy all services (default: development)"
+        echo "  build [service]                 - Build Docker images (all or specific service)"
+        echo "  deploy-service <service> [env]  - Deploy specific service only"
+        echo "  start [env]                     - Start services without building"
+        echo "  stop                            - Stop all services"
+        echo "  restart [env]                   - Restart all services"
+        echo "  restart-service <service> [env] - Restart specific service only"
+        echo "  status                          - Show service status"
+        echo "  logs [service]                  - Show logs (optionally for specific service)"
+        echo "  cleanup                         - Stop services and cleanup volumes"
+        echo "  help                            - Show this help message"
         echo ""
+        echo "Services: frontend, backend, ovara-agent"
         echo "Environments: development, production"
+        echo ""
+        echo "Examples:"
+        echo "  $0 deploy                       # Deploy all services (development)"
+        echo "  $0 deploy production            # Deploy all services (production)"
+        echo "  $0 build frontend               # Build only frontend"
+        echo "  $0 deploy-service backend       # Deploy only backend (development)"
+        echo "  $0 deploy-service frontend prod # Deploy only frontend (production)"
+        echo "  $0 restart-service ovara-agent  # Restart only ovara-agent"
         ;;
     *)
         print_error "Unknown command: $1"
