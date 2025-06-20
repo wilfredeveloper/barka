@@ -170,7 +170,7 @@ def create_project(name: str, user_id: str, description: Optional[str], client_i
         logger.error(f"Error creating project: {e}")
         return create_response("error", error_message=str(e))
 
-def get_project(project_id: str, client_id: Optional[str], organization_id: Optional[str]) -> Dict:
+def get_project(project_id: str, organization_id: Optional[str]) -> Dict:
     """Get comprehensive project details including team members, tasks, and documents.
 
     This tool retrieves a single project from the database with all related information
@@ -199,7 +199,6 @@ def get_project(project_id: str, client_id: Optional[str], organization_id: Opti
 
     Usage Examples:
         - get_project("507f1f77bcf86cd799439011") - Gets comprehensive project details
-        - get_project("507f1f77bcf86cd799439011", client_id="507f1f77bcf86cd799439012") - With client filter
         - get_project("507f1f77bcf86cd799439011", organization_id="507f1f77bcf86cd799439013") - With org filter
     """
     try:
@@ -215,10 +214,6 @@ def get_project(project_id: str, client_id: Optional[str], organization_id: Opti
 
         # Build query with optional filters
         query = {"_id": ObjectId(project_id)}
-        if client_id:
-            if not validate_object_id(client_id):
-                return create_response("error", error_message="Invalid client_id format")
-            query["client"] = ObjectId(client_id)
         if organization_id:
             if not validate_object_id(organization_id):
                 return create_response("error", error_message="Invalid organization_id format")
@@ -298,7 +293,7 @@ def get_project(project_id: str, client_id: Optional[str], organization_id: Opti
                 assignee_id = task["assignedTo"]
                 if isinstance(assignee_id, ObjectId):
                     assignee = team_members.find_one({"_id": assignee_id},
-                                                   {"name": 1, "email": 1, "role": 1})
+                                                   {"name": 1, "email": 1, "role": 1, "hourlyRate": 1})
                     if assignee:
                         assignee["_id"] = str(assignee["_id"])
                         task["assignedTo"] = assignee
@@ -550,7 +545,7 @@ def delete_project(project_id: str, user_id: str) -> Dict:
         logger.error(f"Error deleting project: {e}")
         return create_response("error", error_message=str(e))
 
-def search_projects(search_term: str, client_id: Optional[str], organization_id: Optional[str]) -> Dict:
+def search_projects(search_term: str, organization_id: Optional[str]) -> Dict:
     """Search projects by name, description, or tags"""
     try:
         if not search_term:
@@ -568,8 +563,6 @@ def search_projects(search_term: str, client_id: Optional[str], organization_id:
         }
 
         # Add scope filters
-        if client_id:
-            search_query["client"] = ObjectId(client_id)
         if organization_id:
             # Handle both ObjectId and string formats for organization field
             search_query["$or"] = [
@@ -775,6 +768,9 @@ def list_tasks(organization_id: str) -> Dict:
                     if assignee:
                         task["assignee_id"] = str(assignee_id)
                         task["assignee_name"] = assignee.get("name", "Unknown Assignee")
+                        task["assignee_email"] = assignee.get("email", "")
+                        task["assignee_role"] = assignee.get("role", "")
+                        task["assignee_hourly_rate"] = assignee.get("hourlyRate")
                         task["assignedTo"] = str(assignee_id)  # Keep original field as string
 
             # Resolve project information
@@ -1068,9 +1064,27 @@ def list_team_members(organization_id: str) -> Dict:
             # Get all tasks assigned to this team member
             assigned_tasks_cursor = tasks.find({
                 "assignedTo": ObjectId(member_id)
-            }).sort("dueDate", 1)  # Sort by due date
+            })
 
             assigned_tasks = list(assigned_tasks_cursor)
+
+            # Fixed: Sort tasks by due date in Python with proper timezone handling
+            from datetime import datetime as dt, timezone
+            def safe_sort_key(task):
+                due_date = task.get("dueDate")
+                if due_date is None:
+                    # Use a far future date with UTC timezone
+                    return dt(9999, 12, 31, tzinfo=timezone.utc)
+                if isinstance(due_date, dt):
+                    # Ensure all datetimes have timezone info
+                    if due_date.tzinfo is None:
+                        # Assume naive datetimes are UTC
+                        return due_date.replace(tzinfo=timezone.utc)
+                    return due_date
+                # For non-datetime values, return a far future date with timezone
+                return dt(9999, 12, 31, tzinfo=timezone.utc)
+
+            assigned_tasks.sort(key=safe_sort_key)
 
             # Enhance tasks with project and client information
             enhanced_tasks = []
@@ -1124,7 +1138,7 @@ def list_team_members(organization_id: str) -> Dict:
                 enhanced_task = {
                     "_id": task["_id"],
                     "id": task["id"],
-                    "name": task.get("name", task.get("title", "Untitled Task")),  # Handle both name and title fields
+                    "name": task.get("name", task.get("title", "Untitled Task")),
                     "description": task.get("description", ""),
                     "status": task.get("status", "not_started"),
                     "priority": task.get("priority", "medium"),
@@ -1133,9 +1147,9 @@ def list_team_members(organization_id: str) -> Dict:
                     "tags": task.get("tags", []),
                     "createdAt": task.get("createdAt"),
                     "updatedAt": task.get("updatedAt"),
-                    "project": project_info,  # Nested project information
-                    "client": client_info,    # Nested client information
-                    "assignedTo": str(member_id)  # Reference back to team member
+                    "project": project_info,
+                    "client": client_info,
+                    "assignedTo": str(member_id)
                 }
 
                 enhanced_tasks.append(enhanced_task)
@@ -1147,13 +1161,16 @@ def list_team_members(organization_id: str) -> Dict:
             not_started_tasks = len([t for t in enhanced_tasks if t["status"] == "not_started"])
             overdue_tasks = 0
 
-            # Count overdue tasks
-            from datetime import datetime, timezone
-            current_date = datetime.now(timezone.utc)
+            # Fixed: Count overdue tasks with proper timezone handling
+            current_date = dt.now(timezone.utc)
             for task in enhanced_tasks:
-                if (task.get("dueDate") and task["status"] != "completed" and
-                    isinstance(task["dueDate"], datetime) and task["dueDate"] < current_date):
-                    overdue_tasks += 1
+                due_date = task.get("dueDate")
+                if (due_date and task["status"] != "completed" and isinstance(due_date, dt)):
+                    # Ensure due_date has timezone info for comparison
+                    if due_date.tzinfo is None:
+                        due_date = due_date.replace(tzinfo=timezone.utc)
+                    if due_date < current_date:
+                        overdue_tasks += 1
 
             # Add task information to team member
             member["tasks"] = {
@@ -1199,6 +1216,7 @@ def list_team_members(organization_id: str) -> Dict:
     except Exception as e:
         logger.error(f"Error listing team members with task details: {e}")
         return create_response("error", error_message=str(e))
+
 
 def update_team_member(member_id: str, user_id: str, name: Optional[str], email: Optional[str],
                       role: Optional[str], availability: Optional[str],
@@ -1343,10 +1361,28 @@ def get_team_member_workload(member_id: str, organization_id: Optional[str]) -> 
         assigned_tasks_cursor = tasks.find({
             "assignedTo": ObjectId(member_id),
             "status": {"$in": ["not_started", "in_progress"]},
-            "isActive": {"$ne": False}  # Include tasks where isActive is not explicitly False
-        }).sort("dueDate", 1)
+            "isActive": {"$ne": False}
+        })
 
         assigned_tasks = list(assigned_tasks_cursor)
+
+        # Fixed: Sort tasks by due date in Python with proper timezone handling
+        from datetime import datetime as dt, timezone
+        def safe_sort_key(task):
+            due_date = task.get("dueDate")
+            if due_date is None:
+                # Use a far future date with UTC timezone
+                return dt(9999, 12, 31, tzinfo=timezone.utc)
+            if isinstance(due_date, dt):
+                # Ensure all datetimes have timezone info
+                if due_date.tzinfo is None:
+                    # Assume naive datetimes are UTC
+                    return due_date.replace(tzinfo=timezone.utc)
+                return due_date
+            # For non-datetime values, return a far future date with timezone
+            return dt(9999, 12, 31, tzinfo=timezone.utc)
+
+        assigned_tasks.sort(key=safe_sort_key)
 
         # Calculate workload metrics
         current_tasks = len(assigned_tasks)
@@ -1399,7 +1435,8 @@ def get_team_member_workload(member_id: str, organization_id: Optional[str]) -> 
                 "_id": str(team_member["_id"]),
                 "name": team_member.get("name", ""),
                 "email": team_member.get("email", ""),
-                "role": team_member.get("role", "")
+                "role": team_member.get("role", ""),
+                "hourlyRate": team_member.get("hourlyRate")
             },
             "workload": updated_workload,
             "capacity": capacity,
@@ -1407,7 +1444,7 @@ def get_team_member_workload(member_id: str, organization_id: Optional[str]) -> 
             "assignedTasks": assigned_tasks,
             "currentProjects": current_projects,
             "performance": team_member.get("performance", {}),
-            "lastUpdated": datetime.now(timezone.utc).isoformat()
+            "lastUpdated": dt.now(timezone.utc).isoformat()
         }
 
         logger.info(f"Retrieved comprehensive workload for team member: {member_id}")
@@ -1416,6 +1453,7 @@ def get_team_member_workload(member_id: str, organization_id: Optional[str]) -> 
     except Exception as e:
         logger.error(f"Error getting team member workload: {e}")
         return create_response("error", error_message=str(e))
+
 
 # --- Search Operations Functions ---
 def cross_search(search_term: str, entity_types: Optional[List[str]],
@@ -1912,6 +1950,7 @@ def get_team_performance(team_member_id: str, organization_id: str) -> Dict:
                 "member_id": member_id_str,
                 "member_name": member.get("name", ""),
                 "role": member.get("role", ""),
+                "hourlyRate": member.get("hourlyRate"),
                 "assigned_tasks": assigned_tasks,
                 "completed_tasks": completed_tasks,
                 "in_progress_tasks": in_progress_tasks,

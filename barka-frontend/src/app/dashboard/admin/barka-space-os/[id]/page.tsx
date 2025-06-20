@@ -20,6 +20,9 @@ import { ADKClient, ADKSessionInfo } from '@/lib/adk-client';
 import api from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import { adkSessionService } from '@/lib/adk-session-service';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 
 // Types
 interface Message {
@@ -120,14 +123,85 @@ const FastPulsatingDotsLoader = React.memo(() => (
   </div>
 ));
 
-// XML Response Renderer Component
-const XMLResponseRenderer = React.memo(({ content }: { content: string }) => {
+// Enhanced Message Content Renderer Component
+const MessageContentRenderer = React.memo(({ content }: { content: string }) => {
   // Enhanced XML detection - handles multiple XML blocks and nested structures
   const xmlRegex = /<([^>\/\s]+)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
   const xmlMatches = Array.from(content.matchAll(xmlRegex));
 
   if (xmlMatches.length === 0) {
-    return <div className="whitespace-pre-wrap">{content}</div>;
+    // No XML found - render as markdown
+    return (
+      <div className="prose prose-invert prose-sm max-w-none">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight]}
+          components={{
+            // Custom styling for markdown elements
+            p: ({ children }) => <p className="mb-2 last:mb-0 text-sm leading-relaxed">{children}</p>,
+            h1: ({ children }) => <h1 className="text-lg font-semibold mb-2 text-zinc-100">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-base font-semibold mb-2 text-zinc-100">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 text-zinc-100">{children}</h3>,
+            h4: ({ children }) => <h4 className="text-sm font-medium mb-1 text-zinc-200">{children}</h4>,
+            h5: ({ children }) => <h5 className="text-xs font-medium mb-1 text-zinc-200">{children}</h5>,
+            h6: ({ children }) => <h6 className="text-xs font-medium mb-1 text-zinc-300">{children}</h6>,
+            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1 text-sm">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1 text-sm">{children}</ol>,
+            li: ({ children }) => <li className="text-zinc-200">{children}</li>,
+            code: ({ children, className }) => {
+              const isInline = !className;
+              return isInline ? (
+                <code className="bg-zinc-700 text-zinc-100 px-1 py-0.5 rounded text-xs font-mono">
+                  {children}
+                </code>
+              ) : (
+                <code className={className}>{children}</code>
+              );
+            },
+            pre: ({ children }) => (
+              <pre className="bg-zinc-800 border border-zinc-700 rounded-md p-3 overflow-x-auto mb-2">
+                {children}
+              </pre>
+            ),
+            blockquote: ({ children }) => (
+              <blockquote className="border-l-4 border-zinc-600 pl-3 italic text-zinc-300 mb-2">
+                {children}
+              </blockquote>
+            ),
+            a: ({ children, href }) => (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:text-primary/80 underline"
+              >
+                {children}
+              </a>
+            ),
+            strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
+            em: ({ children }) => <em className="italic text-zinc-200">{children}</em>,
+            table: ({ children }) => (
+              <div className="overflow-x-auto mb-2">
+                <table className="min-w-full border border-zinc-700 rounded-md">
+                  {children}
+                </table>
+              </div>
+            ),
+            thead: ({ children }) => <thead className="bg-zinc-800">{children}</thead>,
+            tbody: ({ children }) => <tbody>{children}</tbody>,
+            tr: ({ children }) => <tr className="border-b border-zinc-700">{children}</tr>,
+            th: ({ children }) => (
+              <th className="px-3 py-2 text-left text-xs font-medium text-zinc-300 uppercase tracking-wider">
+                {children}
+              </th>
+            ),
+            td: ({ children }) => <td className="px-3 py-2 text-sm text-zinc-200">{children}</td>,
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+    );
   }
 
   // Split content into parts with XML blocks highlighted
@@ -288,8 +362,8 @@ const MessageComponent = React.memo(({ message, debugMode }: { message: Message;
               </div>
             )}
 
-            {/* Message Content with XML Detection */}
-            <XMLResponseRenderer content={message.content} />
+            {/* Message Content with Markdown and XML Detection */}
+            <MessageContentRenderer content={message.content} />
           </div>
         )}
       </div>

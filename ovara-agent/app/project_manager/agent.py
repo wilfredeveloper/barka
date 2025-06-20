@@ -43,7 +43,7 @@ if not os.path.exists(mcp_server_path):
 # Create the Project Manager Agent with Python MCP integration
 root_agent = Agent(
     name="project_manager_agent",
-    model="gemini-2.0-flash-exp",
+    model="gemini-2.5-flash-lite-preview-06-17",
     description="Comprehensive project management agent with advanced capabilities for project operations, task management, team coordination, analytics, and AI-powered resource optimization through Python MCP Server integration.",
     instruction=project_manager_system_prompt,
     tools=[
