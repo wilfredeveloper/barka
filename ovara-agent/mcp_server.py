@@ -37,7 +37,7 @@ load_dotenv()
 # --- Logging Setup ---
 LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), "mcp_server_activity.log")
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
     handlers=[
         logging.FileHandler(LOG_FILE_PATH, mode="w"),
@@ -517,6 +517,165 @@ def update_project(project_id: str, user_id: str, name: Optional[str], descripti
 
     except Exception as e:
         logger.error(f"Error updating project: {e}")
+        return create_response("error", error_message=str(e))
+
+def assign_team_member_to_project(project_id: str, team_member_id: str, user_id: str) -> Dict:
+    """Assign a team member to a project
+
+    Args:
+        project_id: ID of the project to assign team member to
+        team_member_id: ID of the team member to assign
+        user_id: ID of the user performing the assignment
+
+    Returns:
+        Dict with success/error status and assignment details
+    """
+    try:
+        if not validate_object_id(project_id) or not validate_object_id(team_member_id) or not user_id:
+            return create_response("error", error_message="Valid project_id, team_member_id, and user_id are required")
+
+        projects = db_manager.get_collection("projects")
+        team_members = db_manager.get_collection("team_members")
+
+        # Verify project exists
+        project = projects.find_one({"_id": ObjectId(project_id)})
+        if not project:
+            return create_response("error", error_message="Project not found")
+
+        # Verify team member exists
+        team_member = team_members.find_one({"_id": ObjectId(team_member_id)})
+        if not team_member:
+            return create_response("error", error_message="Team member not found")
+
+        # Check if team member is already assigned
+        current_team_members = project.get("teamMembers", [])
+        team_member_obj_id = ObjectId(team_member_id)
+
+        # Handle both ObjectId and string formats in existing team members list
+        for existing_member in current_team_members:
+            if isinstance(existing_member, ObjectId):
+                if existing_member == team_member_obj_id:
+                    return create_response("error", error_message="Team member already assigned to project")
+            elif str(existing_member) == team_member_id:
+                return create_response("error", error_message="Team member already assigned to project")
+
+        # Add team member to project
+        result = projects.update_one(
+            {"_id": ObjectId(project_id)},
+            {
+                "$push": {"teamMembers": team_member_obj_id},
+                "$set": {
+                    "updatedAt": datetime.now(timezone.utc),
+                    "lastModifiedBy": user_id
+                }
+            }
+        )
+
+        if result.matched_count == 0:
+            return create_response("error", error_message="Failed to update project")
+
+        # Get updated project with team member count
+        updated_project = projects.find_one({"_id": ObjectId(project_id)})
+        team_count = len(updated_project.get("teamMembers", []))
+
+        logger.info(f"Assigned team member {team_member_id} ({team_member.get('name', 'Unknown')}) to project {project_id}")
+
+        return create_response("success", {
+            "project_id": project_id,
+            "project_name": project.get("name", "Unknown Project"),
+            "team_member_id": team_member_id,
+            "team_member_name": team_member.get("name", "Unknown"),
+            "team_member_email": team_member.get("email", ""),
+            "team_member_role": team_member.get("role", ""),
+            "assigned": True,
+            "total_team_members": team_count,
+            "message": f"Successfully assigned {team_member.get('name', 'team member')} to {project.get('name', 'project')}"
+        })
+
+    except Exception as e:
+        logger.error(f"Error assigning team member to project: {e}")
+        return create_response("error", error_message=str(e))
+
+def remove_team_member_from_project(project_id: str, team_member_id: str, user_id: str) -> Dict:
+    """Remove a team member from a project
+
+    Args:
+        project_id: ID of the project to remove team member from
+        team_member_id: ID of the team member to remove
+        user_id: ID of the user performing the removal
+
+    Returns:
+        Dict with success/error status and removal details
+    """
+    try:
+        if not validate_object_id(project_id) or not validate_object_id(team_member_id) or not user_id:
+            return create_response("error", error_message="Valid project_id, team_member_id, and user_id are required")
+
+        projects = db_manager.get_collection("projects")
+        team_members = db_manager.get_collection("team_members")
+
+        # Verify project exists
+        project = projects.find_one({"_id": ObjectId(project_id)})
+        if not project:
+            return create_response("error", error_message="Project not found")
+
+        # Verify team member exists
+        team_member = team_members.find_one({"_id": ObjectId(team_member_id)})
+        if not team_member:
+            return create_response("error", error_message="Team member not found")
+
+        # Check if team member is currently assigned
+        current_team_members = project.get("teamMembers", [])
+        team_member_obj_id = ObjectId(team_member_id)
+
+        is_assigned = False
+        for existing_member in current_team_members:
+            if isinstance(existing_member, ObjectId):
+                if existing_member == team_member_obj_id:
+                    is_assigned = True
+                    break
+            elif str(existing_member) == team_member_id:
+                is_assigned = True
+                break
+
+        if not is_assigned:
+            return create_response("error", error_message="Team member is not assigned to this project")
+
+        # Remove team member from project
+        result = projects.update_one(
+            {"_id": ObjectId(project_id)},
+            {
+                "$pull": {"teamMembers": {"$in": [team_member_obj_id, team_member_id]}},
+                "$set": {
+                    "updatedAt": datetime.now(timezone.utc),
+                    "lastModifiedBy": user_id
+                }
+            }
+        )
+
+        if result.matched_count == 0:
+            return create_response("error", error_message="Failed to update project")
+
+        # Get updated project with team member count
+        updated_project = projects.find_one({"_id": ObjectId(project_id)})
+        team_count = len(updated_project.get("teamMembers", []))
+
+        logger.info(f"Removed team member {team_member_id} ({team_member.get('name', 'Unknown')}) from project {project_id}")
+
+        return create_response("success", {
+            "project_id": project_id,
+            "project_name": project.get("name", "Unknown Project"),
+            "team_member_id": team_member_id,
+            "team_member_name": team_member.get("name", "Unknown"),
+            "team_member_email": team_member.get("email", ""),
+            "team_member_role": team_member.get("role", ""),
+            "removed": True,
+            "total_team_members": team_count,
+            "message": f"Successfully removed {team_member.get('name', 'team member')} from {project.get('name', 'project')}"
+        })
+
+    except Exception as e:
+        logger.error(f"Error removing team member from project: {e}")
         return create_response("error", error_message=str(e))
 
 def delete_project(project_id: str, user_id: str) -> Dict:
@@ -2005,7 +2164,7 @@ app = Server("barka-project-manager")
 
 # ADK Tools Dictionary - will be populated with all project management functions
 ADK_PROJECT_TOOLS = {
-    # Project Operations (7 tools)
+    # Project Operations (9 tools)
     "create_project": FunctionTool(func=create_project),
     "get_project": FunctionTool(func=get_project),
     "list_projects": FunctionTool(func=list_projects),
@@ -2013,6 +2172,8 @@ ADK_PROJECT_TOOLS = {
     "delete_project": FunctionTool(func=delete_project),
     "search_projects": FunctionTool(func=search_projects),
     "get_project_tasks": FunctionTool(func=get_project_tasks),
+    "assign_team_member_to_project": FunctionTool(func=assign_team_member_to_project),
+    "remove_team_member_from_project": FunctionTool(func=remove_team_member_from_project),
 
     # Task Operations (6 tools)
     "create_task": FunctionTool(func=create_task),

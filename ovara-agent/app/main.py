@@ -166,7 +166,7 @@ def create_initial_state(
             "user_permissions": permissions,
             "preferences": {
                 "default_view": "list",
-                "items_per_page": 20,
+                "items_per_page": 10,
                 "show_completed_tasks": False,
                 "notification_preferences": {
                     "task_assignments": True,
