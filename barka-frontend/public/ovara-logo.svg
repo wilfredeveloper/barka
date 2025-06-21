@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Main text "Barka" -->
+  <path d="M15.5 30C9.7 30 5 25.3 5 19.5C5 13.7 9.7 9 15.5 9C21.3 9 26 13.7 26 19.5C26 25.3 21.3 30 15.5 30ZM15.5 12C11.4 12 8 15.4 8 19.5C8 23.6 11.4 27 15.5 27C19.6 27 23 23.6 23 19.5C23 15.4 19.6 12 15.5 12Z" fill="#22C55E"/>
+  <path d="M37 9L30 30H27L20 9H23.5L28.5 25L33.5 9H37Z" fill="#22C55E"/>
+  <path d="M48 9L55 30H51.5L50 25H42L40.5 30H37L44 9H48ZM43 22H49L46 13L43 22Z" fill="#22C55E"/>
+  <path d="M67 9L74 30H70.5L69 25H61L59.5 30H56L63 9H67ZM62 22H68L65 13L62 22Z" fill="#22C55E"/>
+  <path d="M86 9H89V27H98V30H86V9Z" fill="#22C55E"/>
+  
+  <!-- AI agent icon -->
+  <circle cx="105" cy="19.5" r="10" stroke="#22C55E" stroke-width="2"/>
+  <path d="M100 19.5H110" stroke="#22C55E" stroke-width="2"/>
+  <path d="M105 14.5V24.5" stroke="#22C55E" stroke-width="2"/>
+  <path d="M101 15.5L109 23.5" stroke="#22C55E" stroke-width="2"/>
+  <path d="M109 15.5L101 23.5" stroke="#22C55E" stroke-width="2"/>
+</svg>
