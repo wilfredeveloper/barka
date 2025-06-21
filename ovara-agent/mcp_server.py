@@ -22,6 +22,7 @@ from mcp.server.models import InitializationOptions
 # ADK Tool Imports
 from google.adk.tools.function_tool import FunctionTool
 from google.adk.tools.mcp_tool.conversion_utils import adk_to_mcp_tool_type
+from google.adk.tools.tool_context import ToolContext
 
 # MongoDB imports
 from pymongo import MongoClient
@@ -32,14 +33,6 @@ from bson.errors import InvalidId
 # Environment setup
 from dotenv import load_dotenv
 load_dotenv()
-
-# Session-aware MCP tools
-from utils.session_aware_mcp_tools import (
-    SessionAwareMCPTool,
-    set_current_session_state,
-    create_mock_tool_context,
-    MCPParameterResolver
-)
 
 # --- Logging Setup ---
 LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), "mcp_server_activity.log")
@@ -367,6 +360,7 @@ def list_projects(organization_id: str) -> Dict:
     Returns:
         Dict containing projects with both IDs and human-readable names for all entity references
     """
+
     try:
         # Get collections
         projects = db_manager.get_collection("projects")
@@ -1298,18 +1292,57 @@ def find_available_team_members(organization_id: Optional[str],
     try:
         team_members = db_manager.get_collection("team_members")
 
-        query = {"availability": "available"}
+        # Build query for active team members with low utilization
+        query = {
+            "status": "active",  # Use correct status field
+            "isActive": {"$ne": False},  # Ensure not marked as inactive
+            "$or": [
+                {"workload.utilizationPercentage": {"$lt": 100}},  # Less than 100% utilized
+                {"workload.utilizationPercentage": {"$exists": False}}  # No workload data yet
+            ]
+        }
+
         if organization_id:
             # Handle both ObjectId and string formats for organization field
-            query["$or"] = [
-                {"organization": ObjectId(organization_id)},
-                {"organization": organization_id}
+            query["$and"] = [
+                {
+                    "$or": [
+                        {"organization": ObjectId(organization_id)},
+                        {"organization": organization_id}
+                    ]
+                }
             ]
+
         if skill_required:
             query["skills"] = {"$in": [skill_required]}
 
         cursor = team_members.find(query).sort("name", 1)
         member_list = list(cursor)
+
+        # Convert ObjectIds to strings and add availability status
+        for member in member_list:
+            member["_id"] = str(member["_id"])
+            member["id"] = member["_id"]
+
+            # Convert other ObjectId fields to strings
+            for field in ["organization", "client", "createdBy", "lastModifiedBy"]:
+                if member.get(field) and isinstance(member[field], ObjectId):
+                    member[field] = str(member[field])
+
+            # Calculate availability status
+            workload = member.get("workload", {})
+            utilization = workload.get("utilizationPercentage", 0)
+
+            if member.get("status") != "active":
+                member["availabilityStatus"] = member.get("status", "unknown")
+            elif utilization >= 100:
+                member["availabilityStatus"] = "fully_allocated"
+            elif utilization >= 80:
+                member["availabilityStatus"] = "mostly_allocated"
+            elif utilization >= 50:
+                member["availabilityStatus"] = "partially_allocated"
+            else:
+                member["availabilityStatus"] = "available"
 
         logger.info(f"Found {len(member_list)} available team members")
         return create_response("success", {"available_members": member_list})
@@ -2028,28 +2061,19 @@ async def list_mcp_tools() -> List[mcp_types.Tool]:
 
 @app.call_tool()
 async def call_mcp_tool(name: str, arguments: dict) -> List[mcp_types.TextContent]:
-    """Enhanced MCP handler with session state support for parameter auto-resolution."""
+    """MCP handler to execute ADK tools."""
     logger.info(f"MCP Server: Received call_tool request for '{name}' with args: {arguments}")
 
     if name in ADK_PROJECT_TOOLS:
         adk_tool_instance = ADK_PROJECT_TOOLS[name]
 
-        # Extract session state from arguments if provided
-        session_state = arguments.pop('_session_state', None)
-
-        # Create mock tool context with session state
-        mock_tool_context = create_mock_tool_context(session_state)
-
-        # Create session-aware tool wrapper
-        session_aware_tool = SessionAwareMCPTool(adk_tool_instance, name)
-
         try:
-            # Use session-aware tool that auto-resolves parameters
-            adk_tool_response = await session_aware_tool.run_async(
+            # Execute ADK tool directly
+            adk_tool_response = await adk_tool_instance.run_async(
                 args=arguments,
-                tool_context=mock_tool_context,
+                tool_context=None,
             )
-            logger.info(f"MCP Server: ADK tool '{name}' executed successfully with session state support")
+            logger.info(f"MCP Server: ADK tool '{name}' executed successfully")
             response_text = json.dumps(adk_tool_response, indent=2)
             return [mcp_types.TextContent(type="text", text=response_text)]
 
