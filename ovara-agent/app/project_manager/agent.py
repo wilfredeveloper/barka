@@ -12,7 +12,7 @@ if project_root in sys.path:
 sys.path.insert(0, project_root)
 
 from google.adk.agents import Agent
-# Import session-aware MCPToolset with configurable timeout and session state injection
+# Import custom MCPToolset with configurable timeout
 from google.adk.tools.mcp_tool.mcp_toolset import StdioServerParameters
 from utils.custom_adk_patches import SessionAwareMCPToolset as MCPToolset
 from .prompt import project_manager_system_prompt

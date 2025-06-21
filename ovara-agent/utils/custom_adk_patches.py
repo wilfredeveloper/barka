@@ -137,10 +137,10 @@ class CustomMcpSessionManager(MCPSessionManager):
 
 class SessionAwareMCPToolset(MCPToolset):
     """
-    Session-Aware MCP Toolset with configurable timeout.
+    Custom MCP Toolset with configurable timeout.
 
     This class uses the CustomMcpSessionManager to enable configurable timeouts
-    for MCP connections. Session awareness is handled at the MCP server level.
+    for MCP connections. The name is kept for backward compatibility.
     """
 
     def __init__(
@@ -172,7 +172,7 @@ class SessionAwareMCPToolset(MCPToolset):
         self._session: Optional[ClientSession] = None  # Normal attribute, not property
 
 
-# SessionAwareMCPToolWrapper removed - session awareness handled at MCP server level
+# Session awareness functionality removed - using standard MCP toolset with custom timeout
 
 
 class CustomMCPToolset(SessionAwareMCPToolset):
@@ -182,7 +182,7 @@ class CustomMCPToolset(SessionAwareMCPToolset):
     This class replaces the default MCPToolset to enable the use of our
     custom session manager with configurable timeouts.
 
-    Note: This is now an alias for SessionAwareMCPToolset for backward compatibility.
+    Note: This is an alias for SessionAwareMCPToolset for backward compatibility.
     """
     pass
 

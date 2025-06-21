@@ -108,7 +108,7 @@ run_calendar_auth() {
     print_warning "4. Copy the authorization code back to this terminal"
     echo ""
     
-    python tests/setup_calendar_auth.py
+    python scripts/setup_calendar_auth.py
     
     if [ $? -eq 0 ]; then
         print_success "Calendar authentication completed successfully"
