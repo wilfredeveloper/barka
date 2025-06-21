@@ -810,16 +810,31 @@ def create_task(title: str, user_id: str, organization_id: str,
         if resolved_client_id and not validate_object_id(resolved_client_id):
             return create_response("error", error_message="Invalid client_id format")
 
+        # Validate project_id is required (backend requirement)
+        if not project_id:
+            return create_response("error", error_message="project_id is required - tasks must belong to a project")
+
         task_data = {
             "name": title,  # Changed from "title" to "name" to match backend schema
             "description": description or "",
             "organization": ObjectId(organization_id),  # Required field
+            "project": ObjectId(project_id),  # Required field per backend model
             "status": status or "not_started",  # Changed from "todo" to "not_started" to match backend
             "priority": priority or "medium",
             "tags": tags or [],
-            "createdBy": user_id,
+            "createdBy": ObjectId(user_id),  # Convert to ObjectId to match backend expectations
             "createdAt": datetime.now(timezone.utc),
-            "updatedAt": datetime.now(timezone.utc)
+            "updatedAt": datetime.now(timezone.utc),
+            # Add required backend fields with defaults
+            "isActive": True,
+            "isArchived": False,
+            "estimatedHours": estimated_hours or 0,
+            "actualHours": 0,
+            "progress": {
+                "completionPercentage": 0,
+                "timeSpent": 0,
+                "remainingWork": 0
+            }
         }
 
         # Add client if resolved
@@ -827,16 +842,12 @@ def create_task(title: str, user_id: str, organization_id: str,
             task_data["client"] = ObjectId(resolved_client_id)
 
         # Add optional fields
-        if project_id:
-            task_data["project"] = ObjectId(project_id)
         if assignee_id:
             if not validate_object_id(assignee_id):
                 return create_response("error", error_message="Invalid assignee_id format")
             task_data["assignedTo"] = ObjectId(assignee_id)
         if due_date:
             task_data["dueDate"] = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
-        if estimated_hours is not None:
-            task_data["estimatedHours"] = estimated_hours
 
         result = tasks.insert_one(task_data)
         task_data["_id"] = result.inserted_id
@@ -907,36 +918,62 @@ def list_tasks(organization_id: str) -> Dict:
         task_list = list(cursor)
         total = tasks.count_documents(query)
 
-        # Enhance each task with resolved names
+        # Enhance each task with resolved names and proper frontend structure
         for task in task_list:
             # Convert ObjectId to string for JSON serialization
             task["_id"] = str(task["_id"])
             task["id"] = task["_id"]  # Add id field for frontend compatibility
 
-            # Resolve assignee information
+            # Resolve assignee information - return as object structure expected by frontend
             if task.get("assignedTo"):
                 assignee_id = task["assignedTo"]
                 if isinstance(assignee_id, ObjectId):
                     assignee = team_members.find_one({"_id": assignee_id})
                     if assignee:
+                        # Frontend expects assignedTo as an object with _id, name, email, role
+                        task["assignedTo"] = {
+                            "_id": str(assignee_id),
+                            "name": assignee.get("name", "Unknown Assignee"),
+                            "email": assignee.get("email", ""),
+                            "role": assignee.get("role", ""),
+                            "id": str(assignee_id)  # Add id field for compatibility
+                        }
+                        # Also add flat fields for backward compatibility
                         task["assignee_id"] = str(assignee_id)
                         task["assignee_name"] = assignee.get("name", "Unknown Assignee")
                         task["assignee_email"] = assignee.get("email", "")
                         task["assignee_role"] = assignee.get("role", "")
                         task["assignee_hourly_rate"] = assignee.get("hourlyRate")
-                        task["assignedTo"] = str(assignee_id)  # Keep original field as string
+                    else:
+                        # If assignee not found, set to None
+                        task["assignedTo"] = None
+                else:
+                    # If not ObjectId, set to None
+                    task["assignedTo"] = None
 
-            # Resolve project information
+            # Resolve project information - return as object structure expected by frontend
             if task.get("project"):
                 project_id = task["project"]
                 if isinstance(project_id, ObjectId):
                     project = projects.find_one({"_id": project_id})
                     if project:
+                        # Frontend expects project as an object with _id and name
+                        task["project"] = {
+                            "_id": str(project_id),
+                            "name": project.get("name", "Unknown Project"),
+                            "id": str(project_id)  # Add id field for compatibility
+                        }
+                        # Also add flat fields for backward compatibility
                         task["project_id"] = str(project_id)
                         task["project_name"] = project.get("name", "Unknown Project")
-                        task["project"] = str(project_id)  # Keep original field as string
+                    else:
+                        # If project not found, keep as string ID
+                        task["project"] = {"_id": str(project_id), "name": "Unknown Project"}
+                else:
+                    # If not ObjectId, try to convert
+                    task["project"] = {"_id": str(project_id), "name": "Unknown Project"}
 
-            # Resolve client information
+            # Resolve client information - return as object structure expected by frontend
             if task.get("client"):
                 client_id = task["client"]
                 if isinstance(client_id, ObjectId):
@@ -952,14 +989,56 @@ def list_tasks(organization_id: str) -> Dict:
                                 last_name = user.get("lastName", "")
                                 client_name = f"{first_name} {last_name}".strip() or user.get("email", "Unknown Client")
 
+                        # Frontend expects client as an object with _id and name
+                        task["client"] = {
+                            "_id": str(client_id),
+                            "name": client_name,
+                            "id": str(client_id)  # Add id field for compatibility
+                        }
+                        # Also add flat fields for backward compatibility
                         task["client_id"] = str(client_id)
                         task["client_name"] = client_name
-                        task["client"] = str(client_id)  # Keep original field as string
+                    else:
+                        # If client not found, keep as string ID
+                        task["client"] = {"_id": str(client_id), "name": "Unknown Client"}
+                else:
+                    # If not ObjectId, try to convert
+                    task["client"] = {"_id": str(client_id), "name": "Unknown Client"}
 
-            # Convert other ObjectId fields to strings
-            for field in ["organization", "createdBy", "updatedBy"]:
+            # Resolve organization information - return as object structure expected by frontend
+            if task.get("organization"):
+                org_id = task["organization"]
+                if isinstance(org_id, ObjectId):
+                    # Frontend expects organization as an object with _id and name
+                    task["organization"] = {
+                        "_id": str(org_id),
+                        "name": "Organization",  # Could fetch from organizations collection if needed
+                        "id": str(org_id)  # Add id field for compatibility
+                    }
+                else:
+                    task["organization"] = {"_id": str(org_id), "name": "Organization"}
+
+            # Convert other ObjectId fields to strings and create objects for createdBy
+            if task.get("createdBy"):
+                created_by_id = task["createdBy"]
+                if isinstance(created_by_id, ObjectId):
+                    task["createdBy"] = {
+                        "_id": str(created_by_id),
+                        "name": "User"  # Could fetch from users collection if needed
+                    }
+                else:
+                    task["createdBy"] = {"_id": str(created_by_id), "name": "User"}
+
+            # Handle other fields
+            for field in ["updatedBy", "lastModifiedBy"]:
                 if task.get(field) and isinstance(task[field], ObjectId):
                     task[field] = str(task[field])
+
+            # Ensure required fields exist with defaults
+            if "isActive" not in task:
+                task["isActive"] = True
+            if "isArchived" not in task:
+                task["isArchived"] = False
 
         result = {
             "tasks": task_list,
@@ -982,22 +1061,28 @@ def update_task(task_id: str, user_id: str, title: Optional[str], description: O
                status: Optional[str], priority: Optional[str], assignee_id: Optional[str],
                due_date: Optional[str], estimated_hours: Optional[float],
                tags: Optional[List[str]]) -> Dict:
-    """Update an existing task"""
+    """Update an existing task with proper status handling and backend compatibility"""
     try:
         if not validate_object_id(task_id) or not user_id:
             return create_response("error", error_message="Valid task_id and user_id are required")
 
         tasks = db_manager.get_collection("tasks")
 
+        # Get existing task first to check current status
+        existing_task = tasks.find_one({"_id": ObjectId(task_id)})
+        if not existing_task:
+            return create_response("error", error_message="Task not found")
+
         # Build update data
-        update_data = {"updatedAt": datetime.now(timezone.utc), "updatedBy": user_id}
+        update_data = {
+            "updatedAt": datetime.now(timezone.utc),
+            "lastModifiedBy": ObjectId(user_id)  # Use ObjectId to match backend expectations
+        }
 
         if title is not None:
             update_data["name"] = title  # Changed from "title" to "name" to match backend schema
         if description is not None:
             update_data["description"] = description
-        if status is not None:
-            update_data["status"] = status
         if priority is not None:
             update_data["priority"] = priority
         if assignee_id is not None:
@@ -1011,6 +1096,39 @@ def update_task(task_id: str, user_id: str, title: Optional[str], description: O
         if tags is not None:
             update_data["tags"] = tags
 
+        # Handle status change with proper history tracking (like backend does)
+        if status is not None and status != existing_task.get("status"):
+            # Validate status value
+            valid_statuses = ["not_started", "in_progress", "blocked", "under_review", "completed", "cancelled"]
+            if status not in valid_statuses:
+                return create_response("error", error_message=f"Invalid status. Must be one of: {valid_statuses}")
+
+            update_data["status"] = status
+
+            # Add to status history (like backend does)
+            status_history_entry = {
+                "status": status,
+                "timestamp": datetime.now(timezone.utc),
+                "changedBy": ObjectId(user_id),
+                "comment": f"Status changed via agent to {status}"
+            }
+
+            # Initialize statusHistory if it doesn't exist
+            if "statusHistory" not in existing_task:
+                existing_task["statusHistory"] = []
+
+            # Use $push to add to status history
+            tasks.update_one(
+                {"_id": ObjectId(task_id)},
+                {"$push": {"statusHistory": status_history_entry}}
+            )
+
+            # Set completion date if completed
+            if status == "completed":
+                update_data["completedAt"] = datetime.now(timezone.utc)
+                # Update progress to 100%
+                update_data["progress.completionPercentage"] = 100
+
         result = tasks.update_one(
             {"_id": ObjectId(task_id)},
             {"$set": update_data}
@@ -1022,7 +1140,7 @@ def update_task(task_id: str, user_id: str, title: Optional[str], description: O
         # Get updated task
         updated_task = tasks.find_one({"_id": ObjectId(task_id)})
 
-        logger.info(f"Updated task: {task_id}")
+        logger.info(f"Updated task: {task_id} - Status: {status if status else 'unchanged'}")
         return create_response("success", updated_task)
 
     except Exception as e:
@@ -1649,7 +1767,7 @@ def get_team_member_workload(member_id: str, organization_id: Optional[str]) -> 
 
 # --- Search Operations Functions ---
 def cross_search(search_term: str, entity_types: Optional[List[str]],
-                client_id: Optional[str], organization_id: Optional[str],
+                organization_id: Optional[str],
                 page: Optional[int], limit: Optional[int]) -> Dict:
     """Search across projects, tasks, team members, and clients"""
     try:
@@ -1676,8 +1794,6 @@ def cross_search(search_term: str, entity_types: Optional[List[str]],
                     {"tags": {"$in": [search_term]}}
                 ]
             }
-            if client_id:
-                project_query["client"] = ObjectId(client_id)
             if organization_id:
                 project_query["organization"] = ObjectId(organization_id)
 
