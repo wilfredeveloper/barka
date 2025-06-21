@@ -577,6 +577,54 @@
         text-decoration: underline;
       }
 
+      /* Table styling for beautiful markdown tables */
+      .message-content table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+        background: var(--darker-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .message-content thead {
+        background: rgba(255, 107, 53, 0.1);
+      }
+
+      .message-content th {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        font-weight: 600;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+      }
+
+      .message-content th:last-child {
+        border-right: none;
+      }
+
+      .message-content td {
+        padding: 0.75rem 1rem;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+      }
+
+      .message-content td:last-child {
+        border-right: none;
+      }
+
+      .message-content tbody tr:hover {
+        background: rgba(255, 107, 53, 0.05);
+        transition: background-color 0.2s ease;
+      }
+
+      .message-content tbody tr:last-child td {
+        border-bottom: none;
+      }
+
       /* Hidden by default */
       .hidden {
         display: none !important;

@@ -30,6 +30,7 @@ const teamMemberRoutes = require("./routes/teamMembers");
 const projectRoutes = require("./routes/projects");
 const taskRoutes = require("./routes/tasks");
 const analyticsRoutes = require("./routes/analytics");
+const waitlistRoutes = require("./routes/waitlist");
 
 // Import WebSocket utilities
 const websocket = require("./utils/websocket");
@@ -46,6 +47,7 @@ app.use(express.json()); // Parse JSON bodies
 require("./models/Project");
 require("./models/TeamMember");
 require("./models/Task");
+require("./models/Waitlist");
 
 // Database connection
 mongoose
@@ -74,6 +76,7 @@ app.use("/api/team-members", teamMemberRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/waitlist", waitlistRoutes);
 
 // Debug routes - only available in development environment
 if (process.env.NODE_ENV !== "production") {

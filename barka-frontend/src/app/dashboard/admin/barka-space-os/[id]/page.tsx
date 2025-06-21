@@ -38,6 +38,7 @@ interface Message {
     messageType?: string;
     isDebugOnly?: boolean;
   };
+  responseTime?: number; // Response time in milliseconds
 }
 
 interface Conversation {
@@ -98,30 +99,96 @@ const AVAILABLE_AGENTS: Agent[] = [
 ];
 
 
-// Fast pulsating dots loader component - optimized for speed perception
+// Circular progress indicator component
+const CircularProgress = React.memo(({ size = 20, strokeWidth = 2, className = "" }: {
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+}) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+
+  return (
+    <div className={`inline-flex items-center justify-center ${className}`}>
+      <svg
+        width={size}
+        height={size}
+        className="animate-spin"
+        style={{ animationDuration: '1.5s' }}
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          fill="none"
+          className="opacity-25"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * 0.25}
+          className="opacity-75"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+});
+
+// Response time indicator component
+const ResponseTimeIndicator = React.memo(({ responseTime }: { responseTime?: number }) => {
+  if (!responseTime) return null;
+
+  const formatTime = (ms: number) => {
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-2 text-xs text-zinc-500">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="opacity-60">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+        <polyline points="12,6 12,12 16,14" stroke="currentColor" strokeWidth="2"/>
+      </svg>
+      <span>Response time: {formatTime(responseTime)}</span>
+    </div>
+  );
+});
+
+// Fast pulsating dots loader component with circular progress - optimized for speed perception
 const FastPulsatingDotsLoader = React.memo(() => (
-  <div className="flex items-center space-x-1 py-2">
-    <span
-      className="w-2 h-2 bg-zinc-400 rounded-full"
-      style={{
-        animation: 'pulsate 0.6s ease-in-out infinite',
-        animationDelay: '0s'
-      }}
-    ></span>
-    <span
-      className="w-2 h-2 bg-zinc-400 rounded-full"
-      style={{
-        animation: 'pulsate 0.6s ease-in-out infinite',
-        animationDelay: '0.15s'
-      }}
-    ></span>
-    <span
-      className="w-2 h-2 bg-zinc-400 rounded-full"
-      style={{
-        animation: 'pulsate 0.6s ease-in-out infinite',
-        animationDelay: '0.3s'
-      }}
-    ></span>
+  <div className="flex items-center space-x-3 py-2">
+    <CircularProgress size={16} className="text-brown_sugar-400" />
+    <div className="flex items-center space-x-1">
+      <span
+        className="w-2 h-2 bg-zinc-400 rounded-full"
+        style={{
+          animation: 'pulsate 0.6s ease-in-out infinite',
+          animationDelay: '0s'
+        }}
+      ></span>
+      <span
+        className="w-2 h-2 bg-zinc-400 rounded-full"
+        style={{
+          animation: 'pulsate 0.6s ease-in-out infinite',
+          animationDelay: '0.15s'
+        }}
+      ></span>
+      <span
+        className="w-2 h-2 bg-zinc-400 rounded-full"
+        style={{
+          animation: 'pulsate 0.6s ease-in-out infinite',
+          animationDelay: '0.3s'
+        }}
+      ></span>
+    </div>
   </div>
 ));
 
@@ -180,21 +247,37 @@ const MessageContentRenderer = React.memo(({ content }: { content: string }) => 
             strong: ({ children }) => <strong className="font-semibold text-zinc-50">{children}</strong>,
             em: ({ children }) => <em className="italic text-zinc-200">{children}</em>,
             table: ({ children }) => (
-              <div className="overflow-x-auto mb-3 custom-scrollbar">
-                <table className="min-w-full border border-zinc-700 rounded-lg">
+              <div className="overflow-x-auto my-4 custom-scrollbar">
+                <table className="min-w-full border border-zinc-700 rounded-lg overflow-hidden">
                   {children}
                 </table>
               </div>
             ),
-            thead: ({ children }) => <thead className="bg-zinc-800">{children}</thead>,
-            tbody: ({ children }) => <tbody className="text-base">{children}</tbody>,
-            tr: ({ children }) => <tr className="border-b border-zinc-700 last:border-b-0">{children}</tr>,
+            thead: ({ children }) => (
+              <thead className="bg-zinc-800">
+                {children}
+              </thead>
+            ),
+            tbody: ({ children }) => (
+              <tbody className="bg-zinc-900/50">
+                {children}
+              </tbody>
+            ),
+            tr: ({ children }) => (
+              <tr className="border-b border-zinc-700 hover:bg-zinc-800/30 transition-colors">
+                {children}
+              </tr>
+            ),
             th: ({ children }) => (
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-zinc-300 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-100 border-r border-zinc-700 last:border-r-0">
                 {children}
               </th>
             ),
-            td: ({ children }) => <td className="px-4 py-2.5 text-sm text-zinc-200">{children}</td>,
+            td: ({ children }) => (
+              <td className="px-4 py-3 text-sm text-zinc-200 border-r border-zinc-700 last:border-r-0">
+                {children}
+              </td>
+            ),
           }}
         >
           {content}
@@ -331,6 +414,9 @@ const MessageComponent = React.memo(({ message, debugMode }: { message: Message;
               </div>
             )}
             <MessageContentRenderer content={message.content} />
+            {!isUser && message.responseTime && (
+              <ResponseTimeIndicator responseTime={message.responseTime} />
+            )}
           </div>
         )}
       </div>
@@ -366,6 +452,7 @@ export default function BarkaSpaceOSConversationPage() {
   const [sessionData, setSessionData] = useState<any>(null);
   const [adkSessionInfo, setAdkSessionInfo] = useState<ADKSessionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [requestStartTime, setRequestStartTime] = useState<number | null>(null);
 
   const adkClient = useRef(new ADKClient());
 
@@ -373,24 +460,54 @@ export default function BarkaSpaceOSConversationPage() {
     // ... (logic unchanged)
     try {
       setIsSending(true);
+      const startTime = Date.now();
+      setRequestStartTime(startTime);
+
       const userMessage: Message = { _id: `user_${Date.now()}`, content: messageContent, sender: 'user' as const, conversation: conversationId, createdAt: new Date().toISOString() };
       setMessages(prev => [...prev, userMessage]);
       const thinkingMessage: Message = { _id: `thinking_${Date.now()}`, content: 'Thinking...', sender: 'agent' as const, conversation: conversationId, createdAt: new Date().toISOString() };
       setMessages(prev => [...prev, thinkingMessage]);
       console.log('Sending initial message with params:', { userId: sessionInfo.userId, sessionId: sessionInfo.sessionId, content: messageContent });
+
       const adkMessages = await adkClient.current.sendMessage(sessionInfo.userId, sessionInfo.sessionId, messageContent);
+      const responseTime = Date.now() - startTime;
+
       setMessages(prev => prev.filter(msg => msg._id !== thinkingMessage._id));
       if (adkMessages && adkMessages.length > 0) {
         const userFacingMessages = adkMessages.filter(msg => msg.content && msg.content.trim() && msg.type !== 'function_call' && !msg.content.includes('**Agent Transfer**'));
         if (userFacingMessages.length > 0) {
-          const agentResponses: Message[] = userFacingMessages.map((adkMsg, index) => ({ _id: `agent_${Date.now()}_${index}`, content: adkMsg.content, sender: 'agent' as const, conversation: conversationId, createdAt: new Date().toISOString(), metadata: { author: adkMsg.author || selectedAgent.name, messageType: adkMsg.type || 'text' } }));
+          const agentResponses: Message[] = userFacingMessages.map((adkMsg, index) => ({
+            _id: `agent_${Date.now()}_${index}`,
+            content: adkMsg.content,
+            sender: 'agent' as const,
+            conversation: conversationId,
+            createdAt: new Date().toISOString(),
+            metadata: { author: adkMsg.author || selectedAgent.name, messageType: adkMsg.type || 'text' },
+            responseTime: index === 0 ? responseTime : undefined // Only add response time to first message
+          }));
           setMessages(prev => [...prev, ...agentResponses]);
         } else {
-          const fallbackResponse: Message = { _id: `agent_${Date.now()}`, content: 'I\'m processing your request. How can I help you today?', sender: 'agent' as const, conversation: conversationId, createdAt: new Date().toISOString(), metadata: { author: selectedAgent.name, messageType: 'text' } };
+          const fallbackResponse: Message = {
+            _id: `agent_${Date.now()}`,
+            content: 'I\'m processing your request. How can I help you today?',
+            sender: 'agent' as const,
+            conversation: conversationId,
+            createdAt: new Date().toISOString(),
+            metadata: { author: selectedAgent.name, messageType: 'text' },
+            responseTime
+          };
           setMessages(prev => [...prev, fallbackResponse]);
         }
       } else {
-        const errorMessage: Message = { _id: `error_${Date.now()}`, content: 'No response received from agent. Please try again.', sender: 'agent' as const, conversation: conversationId, createdAt: new Date().toISOString(), metadata: { author: 'system', messageType: 'error' } };
+        const errorMessage: Message = {
+          _id: `error_${Date.now()}`,
+          content: 'No response received from agent. Please try again.',
+          sender: 'agent' as const,
+          conversation: conversationId,
+          createdAt: new Date().toISOString(),
+          metadata: { author: 'system', messageType: 'error' },
+          responseTime
+        };
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error: any) {
@@ -399,6 +516,7 @@ export default function BarkaSpaceOSConversationPage() {
       setMessages(prev => prev.filter(msg => msg.content !== 'Thinking...'));
     } finally {
       setIsSending(false);
+      setRequestStartTime(null);
     }
   }, [conversationId, selectedAgent, adkClient]); // Added adkClient to dependencies
 
@@ -453,24 +571,54 @@ export default function BarkaSpaceOSConversationPage() {
     if (!messageContent.trim() || !conversationId || !adkSessionInfo) { console.warn('Cannot send message: missing conversation or session info'); return; }
     try {
       setIsSending(true);
+      const startTime = Date.now();
+      setRequestStartTime(startTime);
+
       const userMessage: Message = { _id: `user_${Date.now()}`, content: messageContent, sender: 'user' as const, conversation: conversationId, createdAt: new Date().toISOString() };
       setMessages(prev => [...prev, userMessage]);
       const thinkingMessage: Message = { _id: `thinking_${Date.now()}`, content: 'Thinking...', sender: 'agent' as const, conversation: conversationId, createdAt: new Date().toISOString() };
       setMessages(prev => [...prev, thinkingMessage]);
       console.log('Sending message with params:', { userId: adkSessionInfo.userId, sessionId: adkSessionInfo.sessionId, content: messageContent });
+
       const adkMessages = await adkClient.current.sendMessage(adkSessionInfo.userId, adkSessionInfo.sessionId, messageContent);
+      const responseTime = Date.now() - startTime;
+
       setMessages(prev => prev.filter(msg => msg._id !== thinkingMessage._id));
       if (adkMessages && adkMessages.length > 0) {
         const userFacingMessages = adkMessages.filter(msg => msg.content && msg.content.trim() && msg.type !== 'function_call' && !msg.content.includes('**Agent Transfer**'));
         if (userFacingMessages.length > 0) {
-          const agentResponses: Message[] = userFacingMessages.map((adkMsg, index) => ({ _id: `agent_${Date.now()}_${index}`, content: adkMsg.content, sender: 'agent' as const, conversation: conversationId, createdAt: new Date().toISOString(), metadata: { author: adkMsg.author || selectedAgent.name, messageType: adkMsg.type || 'text' } }));
+          const agentResponses: Message[] = userFacingMessages.map((adkMsg, index) => ({
+            _id: `agent_${Date.now()}_${index}`,
+            content: adkMsg.content,
+            sender: 'agent' as const,
+            conversation: conversationId,
+            createdAt: new Date().toISOString(),
+            metadata: { author: adkMsg.author || selectedAgent.name, messageType: adkMsg.type || 'text' },
+            responseTime: index === 0 ? responseTime : undefined // Only add response time to first message
+          }));
           setMessages(prev => [...prev, ...agentResponses]);
         } else {
-          const fallbackResponse: Message = { _id: `agent_${Date.now()}`, content: 'I\'m processing your request. How can I help you today?', sender: 'agent' as const, conversation: conversationId, createdAt: new Date().toISOString(), metadata: { author: selectedAgent.name, messageType: 'text' } };
+          const fallbackResponse: Message = {
+            _id: `agent_${Date.now()}`,
+            content: 'I\'m processing your request. How can I help you today?',
+            sender: 'agent' as const,
+            conversation: conversationId,
+            createdAt: new Date().toISOString(),
+            metadata: { author: selectedAgent.name, messageType: 'text' },
+            responseTime
+          };
           setMessages(prev => [...prev, fallbackResponse]);
         }
       } else {
-        const errorMessage: Message = { _id: `error_${Date.now()}`, content: 'No response received from agent. Please try again.', sender: 'agent' as const, conversation: conversationId, createdAt: new Date().toISOString(), metadata: { author: 'system', messageType: 'error' } };
+        const errorMessage: Message = {
+          _id: `error_${Date.now()}`,
+          content: 'No response received from agent. Please try again.',
+          sender: 'agent' as const,
+          conversation: conversationId,
+          createdAt: new Date().toISOString(),
+          metadata: { author: 'system', messageType: 'error' },
+          responseTime
+        };
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error: any) {
@@ -480,6 +628,7 @@ export default function BarkaSpaceOSConversationPage() {
     } finally {
       setIsSending(false);
       setShouldAutoFocus(true);
+      setRequestStartTime(null);
     }
   }, [conversationId, adkSessionInfo, selectedAgent, adkClient]); // Added adkClient
 

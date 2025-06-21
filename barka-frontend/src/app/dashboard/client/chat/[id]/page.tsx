@@ -46,11 +46,77 @@ interface ApiError {
 // START: New/Refactored Child Components for Performance and Layout
 // =================================================================
 
+// Circular progress indicator component
+const CircularProgress = React.memo(({ size = 20, strokeWidth = 2, className = "" }: {
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+}) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+
+  return (
+    <div className={`inline-flex items-center justify-center ${className}`}>
+      <svg
+        width={size}
+        height={size}
+        className="animate-spin"
+        style={{ animationDuration: '1.5s' }}
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          fill="none"
+          className="opacity-25"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * 0.25}
+          className="opacity-75"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+});
+
+// Response time indicator component
+const ResponseTimeIndicator = React.memo(({ responseTime }: { responseTime?: number }) => {
+  if (!responseTime) return null;
+
+  const formatTime = (ms: number) => {
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-2 text-xs text-zinc-500">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="opacity-60">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+        <polyline points="12,6 12,12 16,14" stroke="currentColor" strokeWidth="2"/>
+      </svg>
+      <span>Response time: {formatTime(responseTime)}</span>
+    </div>
+  );
+});
+
 const PulsatingDotsLoader = React.memo(() => (
-  <div className="flex items-center space-x-1 py-2">
-    <span className="pulsating-dot"></span>
-    <span className="pulsating-dot"></span>
-    <span className="pulsating-dot"></span>
+  <div className="flex items-center space-x-3 py-2">
+    <CircularProgress size={14} className="text-primary" />
+    <div className="flex items-center space-x-1">
+      <span className="pulsating-dot"></span>
+      <span className="pulsating-dot"></span>
+      <span className="pulsating-dot"></span>
+    </div>
   </div>
 ));
 PulsatingDotsLoader.displayName = 'PulsatingDotsLoader';
@@ -212,6 +278,39 @@ const ChatMessage = React.memo(({ message, debugMode }: { message: Message, debu
                     ),
                     strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
                     em: ({ children }) => <em className="italic text-zinc-200">{children}</em>,
+                    // Table components for beautiful table rendering
+                    table: ({ children }) => (
+                      <div className="overflow-x-auto my-3">
+                        <table className="min-w-full border border-zinc-700 rounded-lg overflow-hidden">
+                          {children}
+                        </table>
+                      </div>
+                    ),
+                    thead: ({ children }) => (
+                      <thead className="bg-zinc-800">
+                        {children}
+                      </thead>
+                    ),
+                    tbody: ({ children }) => (
+                      <tbody className="bg-zinc-900/50">
+                        {children}
+                      </tbody>
+                    ),
+                    tr: ({ children }) => (
+                      <tr className="border-b border-zinc-700 hover:bg-zinc-800/30 transition-colors">
+                        {children}
+                      </tr>
+                    ),
+                    th: ({ children }) => (
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-zinc-100 border-r border-zinc-700 last:border-r-0">
+                        {children}
+                      </th>
+                    ),
+                    td: ({ children }) => (
+                      <td className="px-3 py-2 text-xs text-zinc-200 border-r border-zinc-700 last:border-r-0">
+                        {children}
+                      </td>
+                    ),
                   }}
                 >
                   {message.content}
@@ -235,6 +334,10 @@ const ChatMessage = React.memo(({ message, debugMode }: { message: Message, debu
                   </a>
                 ))}
               </div>
+            )}
+            {/* Response time indicator for agent messages */}
+            {!isUser && message.responseTime && (
+              <ResponseTimeIndicator responseTime={message.responseTime} />
             )}
           </div>
         )}
@@ -597,6 +700,9 @@ export default function SingleChatPage() {
   // Title generation state
   const titleGeneratedRef = useRef(false);
 
+  // Response time tracking
+  const [requestStartTime, setRequestStartTime] = useState<number | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -747,19 +853,22 @@ export default function SingleChatPage() {
   const handleADKResponse = (adkMessages: ADKMessage[]) => {
     console.log('Received ADK messages:', adkMessages);
 
+    const responseTime = requestStartTime ? Date.now() - requestStartTime : undefined;
+
     // Remove any temporary "Thinking..." messages and add new messages instantly
     setMessages(prev => {
       // Filter out thinking messages
       const filteredMessages = prev.filter(msg => msg.content !== 'Thinking...');
 
       // Convert ADK messages to frontend format for instant display
-      const newMessages: Message[] = adkMessages.map(adkMsg => ({
+      const newMessages: Message[] = adkMessages.map((adkMsg, index) => ({
         _id: `adk-${Date.now()}-${Math.random().toString(36).substring(2)}`,
         conversation: conversationId,
         sender: 'agent',
         content: adkMsg.content,
         createdAt: new Date().toISOString(),
         attachments: [],
+        responseTime: index === 0 ? responseTime : undefined, // Only add response time to first message
         metadata: {
           author: adkMsg.author,
           type: adkMsg.type,
@@ -773,6 +882,7 @@ export default function SingleChatPage() {
     });
 
     setIsSending(false);
+    setRequestStartTime(null);
 
     // Optional: Sync with backend in background without blocking UI
     // This ensures data consistency without affecting user experience
@@ -916,6 +1026,8 @@ export default function SingleChatPage() {
     try {
       setError(null);
       setIsSending(true);
+      const startTime = Date.now();
+      setRequestStartTime(startTime);
 
       // Create user message immediately
       const userMessage: Message = {
@@ -963,6 +1075,7 @@ export default function SingleChatPage() {
       console.error('Failed to send message:', error);
       setError('Failed to send message. Please try again.');
       setIsSending(false);
+      setRequestStartTime(null);
       setMessages(prevMessages => prevMessages.filter(msg => !msg._id.startsWith('temp-')));
     }
   };

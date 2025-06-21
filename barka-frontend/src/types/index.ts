@@ -151,6 +151,7 @@ export interface Message {
   attachments?: Attachment[];
   metadata?: Record<string, any>;
   createdAt: string;
+  responseTime?: number; // Response time in milliseconds
 }
 
 export type MessageSender = 'user' | 'agent' | 'system';
