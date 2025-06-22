@@ -218,10 +218,43 @@ async def list_apps():
 async def get_mcp_logs(lines: int = 100):
     """Get MCP server logs."""
     try:
-        log_file_path = os.path.join(project_root, "mcp_server_activity.log")
+        # Check multiple possible locations for the log file
+        possible_paths = [
+            os.path.join(project_root, "mcp_server_activity.log"),
+            "/app/mcp_server_activity.log",
+            "/app/logs/mcp_server_activity.log",
+            "mcp_server_activity.log"
+        ]
 
-        if not os.path.exists(log_file_path):
-            return {"error": "Log file not found", "path": log_file_path}
+        log_file_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                log_file_path = path
+                break
+
+        if not log_file_path:
+            # Debug info: show what files exist
+            debug_info = {
+                "error": "Log file not found in any expected location",
+                "checked_paths": possible_paths,
+                "project_root": project_root,
+                "current_working_dir": os.getcwd(),
+                "files_in_project_root": [],
+                "files_in_app": [],
+                "files_in_current_dir": []
+            }
+
+            # List files in various directories for debugging
+            try:
+                if os.path.exists(project_root):
+                    debug_info["files_in_project_root"] = [f for f in os.listdir(project_root) if f.endswith('.log')]
+                if os.path.exists("/app"):
+                    debug_info["files_in_app"] = [f for f in os.listdir("/app") if f.endswith('.log')]
+                debug_info["files_in_current_dir"] = [f for f in os.listdir(".") if f.endswith('.log')]
+            except Exception as e:
+                debug_info["directory_listing_error"] = str(e)
+
+            return debug_info
 
         # Read the last N lines of the log file
         with open(log_file_path, 'r') as f:
@@ -237,6 +270,60 @@ async def get_mcp_logs(lines: int = 100):
     except Exception as e:
         logger.error(f"Error reading MCP logs: {e}")
         return {"error": f"Failed to read logs: {str(e)}"}
+
+@app.get("/debug/mcp-status")
+async def debug_mcp_status():
+    """Debug endpoint to check MCP server status and file system."""
+    try:
+        import subprocess
+        import psutil
+
+        debug_info = {
+            "timestamp": datetime.now().isoformat(),
+            "project_root": project_root,
+            "current_working_dir": os.getcwd(),
+            "environment_vars": {
+                "MONGODB_URI": os.getenv("MONGODB_URI", "Not set"),
+                "PYTHONPATH": os.getenv("PYTHONPATH", "Not set")
+            },
+            "processes": [],
+            "file_system": {}
+        }
+
+        # Check for Python processes that might be MCP server
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                if proc.info['name'] == 'python3' or proc.info['name'] == 'python':
+                    cmdline = proc.info.get('cmdline', [])
+                    if any('mcp_server' in str(arg) for arg in cmdline):
+                        debug_info["processes"].append({
+                            "pid": proc.info['pid'],
+                            "cmdline": cmdline
+                        })
+        except Exception as e:
+            debug_info["process_check_error"] = str(e)
+
+        # Check file system in various locations
+        locations_to_check = ["/app", project_root, os.getcwd()]
+        for location in locations_to_check:
+            try:
+                if os.path.exists(location):
+                    files = os.listdir(location)
+                    log_files = [f for f in files if f.endswith('.log')]
+                    debug_info["file_system"][location] = {
+                        "exists": True,
+                        "log_files": log_files,
+                        "all_files": files[:20]  # Limit to first 20 files
+                    }
+                else:
+                    debug_info["file_system"][location] = {"exists": False}
+            except Exception as e:
+                debug_info["file_system"][location] = {"error": str(e)}
+
+        return debug_info
+
+    except Exception as e:
+        return {"error": f"Debug check failed: {str(e)}"}
 
 @app.get("/logs/app")
 async def get_app_logs(lines: int = 100):
