@@ -52,8 +52,7 @@ const WaitlistSchema = new mongoose.Schema(
   }
 );
 
-// Index for email uniqueness and performance
-WaitlistSchema.index({ email: 1 }, { unique: true });
+// Index for performance (email uniqueness already handled by unique: true in schema)
 WaitlistSchema.index({ createdAt: -1 });
 
 // Method to get full name
