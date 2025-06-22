@@ -135,6 +135,7 @@ Thumbs.db
 # Secrets and credentials
 service-account-key.json
 credentials.json
+smithery-mem0-url.json
 docker-secrets/
 *.pem
 *.key
