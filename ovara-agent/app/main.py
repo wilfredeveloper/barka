@@ -214,6 +214,65 @@ async def list_apps():
     """List available apps."""
     return ["orchestrator"]  # Keep "orchestrator" for frontend compatibility
 
+@app.get("/logs/mcp")
+async def get_mcp_logs(lines: int = 100):
+    """Get MCP server logs."""
+    try:
+        log_file_path = os.path.join(project_root, "mcp_server_activity.log")
+
+        if not os.path.exists(log_file_path):
+            return {"error": "Log file not found", "path": log_file_path}
+
+        # Read the last N lines of the log file
+        with open(log_file_path, 'r') as f:
+            all_lines = f.readlines()
+            last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+        return {
+            "log_file": log_file_path,
+            "total_lines": len(all_lines),
+            "showing_lines": len(last_lines),
+            "logs": ''.join(last_lines)
+        }
+    except Exception as e:
+        logger.error(f"Error reading MCP logs: {e}")
+        return {"error": f"Failed to read logs: {str(e)}"}
+
+@app.get("/logs/app")
+async def get_app_logs(lines: int = 100):
+    """Get application logs from the logs directory."""
+    try:
+        logs_dir = os.path.join(project_root, "logs")
+
+        if not os.path.exists(logs_dir):
+            return {"error": "Logs directory not found", "path": logs_dir}
+
+        # List all log files
+        log_files = [f for f in os.listdir(logs_dir) if f.endswith('.log')]
+
+        if not log_files:
+            return {"error": "No log files found", "directory": logs_dir}
+
+        # Read the most recent log file or a specific one
+        latest_log = sorted(log_files)[-1]
+        log_file_path = os.path.join(logs_dir, latest_log)
+
+        with open(log_file_path, 'r') as f:
+            all_lines = f.readlines()
+            last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+        return {
+            "log_file": log_file_path,
+            "available_files": log_files,
+            "current_file": latest_log,
+            "total_lines": len(all_lines),
+            "showing_lines": len(last_lines),
+            "logs": ''.join(last_lines)
+        }
+    except Exception as e:
+        logger.error(f"Error reading app logs: {e}")
+        return {"error": f"Failed to read logs: {str(e)}"}
+
 @app.post("/apps/{app_name}/users/{user_id}/sessions/{session_id}")
 async def create_session_with_id(
     app_name: str,
