@@ -111,10 +111,13 @@ def convert_object_ids(data: Any) -> Any:
 
 def create_response(status: str = "success", data: Any = None, error_message: str = None) -> Dict:
     """Create standardized response format"""
+    logger.info(f"create_response status: {status}")
     response = {"status": status}
     if data is not None:
+        logger.info(f"create_response data: {data}")
         response["data"] = convert_object_ids(data)
     if error_message:
+        logger.info(f"create_response error_message: {error_message}")
         response["error_message"] = error_message
     return response
 
@@ -163,19 +166,16 @@ def create_project(name: str, user_id: str, description: Optional[str], client_i
         logger.error(f"Error creating project: {e}")
         return create_response("error", error_message=str(e))
 
-def get_project(project_id: str, organization_id: Optional[str]) -> Dict:
+def get_project(project_id: str, organization_id: str) -> Dict:
     """Get comprehensive project details including team members, tasks, and documents.
 
     This tool retrieves a single project from the database with all related information
     populated, similar to what the frontend receives when viewing a project detail page.
-    The client_id and organization_id parameters are OPTIONAL and used for access control/scoping.
+    The organization_id parameter is REQUIRED and used for access control/scoping.
 
     Args:
         project_id (str): Required. The MongoDB ObjectId of the project to retrieve.
-        client_id (Optional[str]): Optional. If provided, only returns the project if it
-                                 belongs to this client. Used for access control.
-        organization_id (Optional[str]): Optional. If provided, only returns the project if it
-                                       belongs to this organization. Used for access control.
+        organization_id (str): Required. Used for access control. Resolve from state {organization_id}
 
     Returns:
         Dict: Response with status 'success' and comprehensive project data including:
@@ -191,8 +191,7 @@ def get_project(project_id: str, organization_id: Optional[str]) -> Dict:
             - Status history and audit trail
 
     Usage Examples:
-        - get_project("507f1f77bcf86cd799439011") - Gets comprehensive project details
-        - get_project("507f1f77bcf86cd799439011", organization_id="507f1f77bcf86cd799439013") - With org filter
+        - get_project("507f1f77bcf86cd799439011", organization_id="507f1f77bcf86cd799439013")
     """
     try:
         if not validate_object_id(project_id):
@@ -355,7 +354,7 @@ def list_projects(organization_id: str) -> Dict:
     """List projects for an organization with default pagination and resolved entity names
 
     Args:
-        organization_id: Required organization ID to scope projects
+        organization_id: Required organization ID to scope projects. Resolve from state {organization_id}
 
     Returns:
         Dict containing projects with both IDs and human-readable names for all entity references
@@ -698,8 +697,19 @@ def delete_project(project_id: str, user_id: str) -> Dict:
         logger.error(f"Error deleting project: {e}")
         return create_response("error", error_message=str(e))
 
-def search_projects(search_term: str, organization_id: Optional[str]) -> Dict:
-    """Search projects by name, description, or tags"""
+def search_projects(search_term: str, organization_id: str) -> Dict:
+    """Search projects by name, description, or tags
+    
+    Args:
+        search_term: Required term to search for
+        organization_id: Required organization ID to scope the search. Resolve from state {organization_id}
+
+    Returns:
+        Dict containing matching projects
+    """
+    if not validate_object_id(organization_id):
+        return create_response("error", error_message="Invalid organization_id format")
+
     try:
         if not search_term:
             return create_response("error", error_message="search_term is required")
@@ -716,12 +726,7 @@ def search_projects(search_term: str, organization_id: Optional[str]) -> Dict:
         }
 
         # Add scope filters
-        if organization_id:
-            # Handle both ObjectId and string formats for organization field
-            search_query["$or"] = [
-                {"organization": ObjectId(organization_id)},
-                {"organization": organization_id}
-            ]
+        search_query["organization"] = ObjectId(organization_id)
 
         cursor = projects.find(search_query).sort("createdAt", -1)
         project_list = list(cursor)
@@ -752,8 +757,8 @@ def get_project_tasks(project_id: str) -> Dict:
         return create_response("error", error_message=str(e))
 
 # --- Task Operations Functions ---
-def create_task(title: str, user_id: str, organization_id: str,
-               description: Optional[str], project_id: Optional[str],
+def create_task(title: str, user_id: str, organization_id: str,project_id: str,
+               description: Optional[str],
                client_id: Optional[str], assignee_id: Optional[str],
                status: Optional[str], priority: Optional[str],
                due_date: Optional[str], estimated_hours: Optional[float],
@@ -762,10 +767,10 @@ def create_task(title: str, user_id: str, organization_id: str,
 
     Args:
         title: Task title/name
-        user_id: ID of user creating the task
-        organization_id: Required organization ID for scoping
+        user_id: ID of user creating the task (resolve from state {user_id})
+        organization_id: Required organization ID for scoping (resolve from state {organization_id})
+        project_id: Required project ID for scoping
         description: Optional task description
-        project_id: Optional project ID - if provided, client_id will be resolved from project
         client_id: Optional client ID - used if no project_id provided, or as override
         assignee_id: Optional team member to assign task to
         status: Task status (default: "not_started")
@@ -2141,12 +2146,12 @@ def get_client(organization_id: str, client_id: Optional[str] = None,
         return create_response("error", error_message=str(e))
 
 # --- Analytics Operations Functions ---
-def get_project_progress(organization_id: str, project_id: Optional[str] = None) -> Dict:
+def get_project_progress(organization_id: str, project_id: str) -> Dict:
     """Get project progress analytics for an organization
 
     Args:
-        organization_id: Required organization ID to scope projects
-        project_id: Optional specific project ID to get progress for
+        organization_id: Required organization ID to scope projects (resolve from state {organization_id})
+        project_id: Required specific project ID to get progress for
 
     Returns:
         Dict containing project progress data or error message
@@ -2208,7 +2213,7 @@ def get_team_performance(team_member_id: str, organization_id: str) -> Dict:
 
     Args:
         team_member_id (str): The unique identifier of the team member
-        organization_id (str): The organization identifier to scope the query
+        organization_id (str): The organization identifier to scope the query. Resolve from state {organization_id}
 
     Returns:
         Dict: Performance data including:

@@ -107,8 +107,8 @@ project_manager_system_prompt = """
     *   `list_projects(organization_id)`: Lists projects (paginated). Use for discovery and ID resolution. (Present as table if >=3 results).
     *   `update_project(project_id, user_id, name, ...)`: Modifies a project. **REQUIRES CONFIRMATION.**
     *   `delete_project(project_id, user_id)`: Deletes a project. **REQUIRES CONFIRMATION.**
-    *   `search_projects(search_term, organization_id)`: Searches projects. (Present as table if >=3 results).
-    *   `get_project_tasks(project_id)`: Gets all tasks for a specific project. (Present as table if >=3 tasks).
+    *   `search_projects(search_term, organization_id)`: Searches projects. (Present as table if >=4 results).
+    *   `get_project_tasks(project_id)`: Gets all tasks for a specific project. (Present as table if >=4 tasks).
     *   `assign_team_member_to_project(project_id, team_member_id, user_id)`: Assigns a member. **REQUIRES CONFIRMATION.**
     *   `remove_team_member_from_project(project_id, team_member_id, user_id)`: Removes a member. **REQUIRES CONFIRMATION.**
 

@@ -797,5 +797,11 @@ if __name__ == "__main__":
         # Run CLI mode
         asyncio.run(main_async())
     else:
-        # Run FastAPI server with reload
-        uvicorn.run("main:app", host="0.0.0.0", port=5566, reload=True)
+        # Run FastAPI server with reload, watching mcp_server.py for changes
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=5566,
+            reload=True,
+            reload_includes=["../mcp_server.py"]  # Watch mcp_server.py in parent directory
+        )
