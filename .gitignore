@@ -65,6 +65,7 @@ jspm_packages/
 
 # Optional npm cache directory
 .npm
+.git-backup/
 
 # Optional eslint cache
 .eslintcache
