@@ -25,6 +25,9 @@ from .organization_config import (
     get_scheduling_policies
 )
 
+# Import admin tools
+from .list_clients_for_scheduling import list_clients_for_scheduling_tool
+
 __all__ = [
     "create_event",
     "delete_event",
@@ -42,4 +45,6 @@ __all__ = [
     "get_organization_meeting_types",
     "update_organization_config_tool",
     "get_scheduling_policies",
+    # Admin tools
+    "list_clients_for_scheduling_tool",
 ]

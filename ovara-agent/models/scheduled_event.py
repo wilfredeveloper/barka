@@ -69,16 +69,16 @@ class ScheduledEvent:
         except Exception as e:
             logger.warning(f"Failed to create ScheduledEvent indexes: {e}")
     
-    def create_event(self, client_id: str, organization_id: str, event_type: str,
+    def create_event(self, client_id: Optional[str], organization_id: str, event_type: str,
                     title: str, start_time: datetime, end_time: datetime,
                     description: Optional[str] = None, attendees: Optional[List[Dict]] = None,
                     location: Optional[str] = None, meeting_link: Optional[str] = None,
                     calendar_event_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new scheduled event.
-        
+
         Args:
-            client_id: MongoDB ObjectId of the client
+            client_id: MongoDB ObjectId of the client (optional for admin internal meetings)
             organization_id: MongoDB ObjectId of the organization
             event_type: Type of event (must be in EVENT_TYPES)
             title: Event title
@@ -89,10 +89,10 @@ class ScheduledEvent:
             location: Event location (optional)
             meeting_link: Online meeting link (optional)
             calendar_event_id: External calendar system ID (optional)
-            
+
         Returns:
             Dict containing the created event data
-            
+
         Raises:
             ValueError: If validation fails
             RuntimeError: If database operation fails
@@ -101,10 +101,11 @@ class ScheduledEvent:
             # Validate inputs
             if event_type not in self.EVENT_TYPES:
                 raise ValueError(f"Invalid event_type: {event_type}. Must be one of {self.EVENT_TYPES}")
-            
-            if not ObjectId.is_valid(client_id):
+
+            # client_id is optional for admin internal meetings
+            if client_id and not ObjectId.is_valid(client_id):
                 raise ValueError(f"Invalid client_id: {client_id}")
-            
+
             if not ObjectId.is_valid(organization_id):
                 raise ValueError(f"Invalid organization_id: {organization_id}")
             
@@ -122,7 +123,7 @@ class ScheduledEvent:
             
             # Create event document
             event_doc = {
-                "clientId": ObjectId(client_id),
+                "clientId": ObjectId(client_id) if client_id else None,
                 "organizationId": ObjectId(organization_id),
                 "scheduledBy": "scheduler_agent",
                 "eventType": event_type,
@@ -184,36 +185,72 @@ class ScheduledEvent:
                          status: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Get events for a client within a time range.
-        
+
         Args:
             client_id: Client identifier
             days_ahead: Number of days to look ahead
             status: Optional status filter
-            
+
         Returns:
             List of event documents
         """
         try:
             if not ObjectId.is_valid(client_id):
                 raise ValueError(f"Invalid client_id: {client_id}")
-            
+
             # Calculate time range
             now = datetime.utcnow()
             end_date = now + timedelta(days=days_ahead)
-            
+
             query = {
                 "clientId": ObjectId(client_id),
                 "startTime": {"$gte": now, "$lte": end_date}
             }
-            
+
             if status:
                 query["status"] = status
-            
+
             events = list(self.collection.find(query).sort("startTime", 1))
             return [self._convert_objectids_to_str(event) for event in events]
-            
+
         except Exception as e:
             logger.error(f"Error retrieving client events: {e}")
+            return []
+
+    def get_organization_events(self, organization_id: str, days_ahead: int = 30,
+                               status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get events for an organization within a time range.
+
+        Args:
+            organization_id: Organization identifier
+            days_ahead: Number of days to look ahead
+            status: Optional status filter
+
+        Returns:
+            List of event documents
+        """
+        try:
+            if not ObjectId.is_valid(organization_id):
+                raise ValueError(f"Invalid organization_id: {organization_id}")
+
+            # Calculate time range
+            now = datetime.utcnow()
+            end_date = now + timedelta(days=days_ahead)
+
+            query = {
+                "organizationId": ObjectId(organization_id),
+                "startTime": {"$gte": now, "$lte": end_date}
+            }
+
+            if status:
+                query["status"] = status
+
+            events = list(self.collection.find(query).sort("startTime", 1))
+            return [self._convert_objectids_to_str(event) for event in events]
+
+        except Exception as e:
+            logger.error(f"Error retrieving organization events: {e}")
             return []
     
     def update_event_status(self, event_id: str, status: str) -> bool:

@@ -5,7 +5,7 @@ Schedule client meeting tool for Jarvis agent with organization policy validatio
 import sys
 import os
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 from google.adk.tools.tool_context import ToolContext
 
 # Add lib directory to path for imports
@@ -105,11 +105,13 @@ def create_calendar_event_internal(title: str, description: str, start_datetime:
 
 def schedule_client_meeting_tool(meeting_type: str, title: str, description: str,
                                 duration_minutes: int, preferred_date: str, preferred_time: str,
-                                attendee_emails: List[str], tool_context: ToolContext) -> dict:
+                                attendee_emails: List[str], tool_context: ToolContext,
+                                client_id: Optional[str]) -> dict:
     """
-    Schedule a meeting for a client with project context and organization policy validation.
+    Schedule a meeting with project context and organization policy validation.
 
-    The client_id and organization_id are automatically read from the session state.
+    For regular client users: client_id and organization_id are automatically read from session state.
+    For admin users: client_id can be provided to schedule on behalf of a client, or omitted for internal meetings.
 
     Args:
         meeting_type: Type of meeting (kickoff, review, demo, planning, check_in) - case insensitive
@@ -120,6 +122,7 @@ def schedule_client_meeting_tool(meeting_type: str, title: str, description: str
         preferred_time: Preferred time (HH:MM)
         attendee_emails: List of attendee email addresses
         tool_context: ADK tool context containing session state
+        client_id: Optional client ID for admin users to schedule on behalf of clients
 
     Returns:
         Dict with scheduling result
@@ -149,17 +152,42 @@ def schedule_client_meeting_tool(meeting_type: str, title: str, description: str
                 "message": "Authentication required to schedule meetings"
             }
 
-        # Get client_id and organization_id from session state
+        # Get client_id and organization_id from session state or parameters
         session_state = tool_context.state
-        actual_client_id = session_state.get("client_id")
+        session_client_id = session_state.get("client_id")
         actual_organization_id = session_state.get("organization_id")
+        user_role = user_info.get("role")
 
-        if not actual_client_id:
-            return {
-                "success": False,
-                "error": "Client ID not found in session state",
-                "message": "Session state missing client information"
-            }
+        # Determine actual client_id based on user role and parameters
+        if client_id:
+            # Admin provided explicit client_id
+            if not user_info or not user_role:
+                return {
+                    "success": False,
+                    "error": "User role information required to use explicit client_id",
+                    "message": "Authentication required"
+                }
+
+            # Only admins can specify client_id for other clients
+            from .role_permissions import is_admin_user
+            if not is_admin_user(user_role):
+                return {
+                    "success": False,
+                    "error": "Only administrators can schedule meetings for other clients",
+                    "message": "Permission denied"
+                }
+            actual_client_id = client_id
+        else:
+            # Use session client_id for regular clients, allow None for admin internal meetings
+            actual_client_id = session_client_id
+
+            # For non-admin users, client_id is required
+            if not is_admin_user(user_role) and not actual_client_id:
+                return {
+                    "success": False,
+                    "error": "Client ID not found in session state",
+                    "message": "Session state missing client information"
+                }
 
         if not actual_organization_id:
             return {
