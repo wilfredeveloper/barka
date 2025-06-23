@@ -24,8 +24,20 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY . .
 
-# Set environment variable for build
+# Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED 1
+
+# Accept build arguments for Next.js public environment variables
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
+ARG NEXT_PUBLIC_OVARA_WS_URL
+ARG NEXT_PUBLIC_OVARA_API_URL
+
+# Set environment variables from build arguments
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_OVARA_WS_URL=$NEXT_PUBLIC_OVARA_WS_URL
+ENV NEXT_PUBLIC_OVARA_API_URL=$NEXT_PUBLIC_OVARA_API_URL
 
 # Build the application
 RUN bun run build
