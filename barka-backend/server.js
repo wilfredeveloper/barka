@@ -42,20 +42,55 @@ const app = express();
 app.use(helmet()); // Security headers
 
 // Configure CORS with environment variable
+const corsOrigin = process.env.CORS_ORIGIN;
+console.log('CORS_ORIGIN environment variable:', process.env.CORS_ORIGIN);
+console.log('CORS configured with origin:', corsOrigin);
+
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    console.log('CORS check - Request origin:', origin);
+    console.log('CORS check - Allowed origin:', corsOrigin);
+
+    // Temporarily allow all origins for debugging
+    // TODO: Remove this and use strict origin checking in production
+    console.log('CORS check - Allowing all origins for debugging');
+    return callback(null, true);
+
+    // Original strict checking (commented out for debugging)
+    // if (origin === corsOrigin) {
+    //   console.log('CORS check - Origin allowed');
+    //   return callback(null, true);
+    // } else {
+    //   console.log('CORS check - Origin denied');
+    //   return callback(new Error('Not allowed by CORS'));
+    // }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
 };
 
-console.log('CORS configured with origin:', process.env.CORS_ORIGIN || 'http://localhost:3000');
 app.use(cors(corsOptions)); // Enable CORS with proper configuration
 
 // Add request logging middleware for debugging
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path} - Origin: ${req.get('Origin')} - User-Agent: ${req.get('User-Agent')?.substring(0, 100)}`);
+
+  // Log CORS headers being sent
+  const originalSend = res.send;
+  res.send = function(data) {
+    console.log('Response CORS headers:', {
+      'Access-Control-Allow-Origin': res.get('Access-Control-Allow-Origin'),
+      'Access-Control-Allow-Credentials': res.get('Access-Control-Allow-Credentials'),
+      'Access-Control-Allow-Methods': res.get('Access-Control-Allow-Methods'),
+    });
+    return originalSend.call(this, data);
+  };
+
   next();
 });
 
@@ -108,6 +143,16 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // Root route
 app.get("/", (req, res) => {
   res.send("Welcome to the Onboarding Agent API");
+});
+
+// CORS test endpoint
+app.get("/api/cors-test", (req, res) => {
+  res.json({
+    message: "CORS test successful",
+    origin: req.get('Origin'),
+    corsOrigin: process.env.CORS_ORIGIN,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Error handling middleware
