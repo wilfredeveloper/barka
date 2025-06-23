@@ -200,7 +200,7 @@ class EmailService {
    */
   async sendClientWelcomeEmail(client, organization) {
     try {
-      const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const baseUrl = process.env.FRONTEND_URL;
       const loginUrl = `${baseUrl}/auth/login`;
       
       const templateData = {
