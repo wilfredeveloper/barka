@@ -161,7 +161,7 @@ export default function LoginPage() {
                       fill="#1877F2"
                     />
                   </svg>
-                  Apple
+                  Facebook
                 </Button>
               </div>
             </form>

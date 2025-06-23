@@ -198,7 +198,7 @@ export default function SignupPage() {
                       fill="#1877F2"
                     />
                   </svg>
-                  Apple
+                  Facebook
                 </Button>
               </div>
             </form>
