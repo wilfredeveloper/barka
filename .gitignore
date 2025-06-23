@@ -177,3 +177,5 @@ ovara_logs/
 
 # Git backup directory (used during monorepo migration)
 .git-backup/
+
+.env.*

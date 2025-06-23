@@ -40,7 +40,25 @@ const app = express();
 
 // Middleware
 app.use(helmet()); // Security headers
-app.use(cors()); // Enable CORS
+
+// Configure CORS with environment variable
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+};
+
+console.log('CORS configured with origin:', process.env.CORS_ORIGIN || 'http://localhost:3000');
+app.use(cors(corsOptions)); // Enable CORS with proper configuration
+
+// Add request logging middleware for debugging
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path} - Origin: ${req.get('Origin')} - User-Agent: ${req.get('User-Agent')?.substring(0, 100)}`);
+  next();
+});
+
 app.use(express.json()); // Parse JSON bodies
 
 // Import models to register them with Mongoose

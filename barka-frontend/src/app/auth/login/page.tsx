@@ -15,7 +15,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 
 import { login } from '@/lib/auth';
 import { loginSchema, LoginFormValues } from '@/lib/validations';
-import Image from 'next/image';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -54,14 +53,6 @@ export default function LoginPage() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <Image
-          src="/barka-logo.svg"
-          alt="Barka"
-          width={120}
-          height={40}
-          priority
-          className="Barka-logo mx-auto"
-        />
         <h1 className="text-2xl font-bold text-white">Welcome to Barka</h1>
         <p className="text-sm text-gray-400 mt-2">
           Don't have an account? <Link href="/auth/signup" className="text-green-500 hover:underline">Sign up</Link>
