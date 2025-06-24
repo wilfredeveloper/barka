@@ -106,6 +106,13 @@ export default function DashboardPage() {
         if (error.response) {
           console.error('API Error Response:', error.response.data);
           console.error('API Error Status:', error.response.status);
+
+          // If it's an organization setup error, redirect to onboarding
+          if (error.response.status === 400 &&
+              error.response.data.message?.includes('organization')) {
+            router.push('/onboarding/organization');
+            return;
+          }
         }
       } finally {
         setIsLoading(false);

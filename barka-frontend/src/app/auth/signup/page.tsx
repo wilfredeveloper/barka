@@ -38,8 +38,20 @@ export default function SignupPage() {
     setError(null);
 
     try {
-      await register(data);
-      router.push('/onboarding'); // Redirect to onboarding instead of dashboard
+      const response = await register(data);
+
+      // Check if organization setup is required
+      if (response.requiresOrganizationSetup) {
+        router.push('/onboarding/organization');
+        return;
+      }
+
+      // Redirect to general onboarding or dashboard based on user role
+      if (response.user.role === 'org_client') {
+        router.push('/dashboard/client');
+      } else {
+        router.push('/onboarding'); // Existing onboarding flow
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to create account. Please try again.');
     } finally {

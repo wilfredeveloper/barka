@@ -67,7 +67,14 @@ exports.register = async (req, res) => {
     const user = await User.create(userData);
 
     // Generate token and send response
-    const response = generateAuthResponse(user);
+    let response = generateAuthResponse(user);
+
+    // For org_admin users without organization, indicate they need to complete setup
+    if (user.role === ROLES.ORG_ADMIN && !user.organization) {
+      response.requiresOrganizationSetup = true;
+      response.message = "Account created successfully. Please complete organization setup.";
+    }
+
     res.status(201).json(response);
   } catch (error) {
     console.error("Registration error:", error);
@@ -126,6 +133,13 @@ exports.login = async (req, res) => {
 
     // Generate token and send response
     const response = generateAuthResponse(user);
+
+    // For org_admin users without organization, indicate setup is needed
+    if (user.role === ROLES.ORG_ADMIN && !user.organization) {
+      response.requiresOrganizationSetup = true;
+      response.message = "Please complete organization setup to continue.";
+    }
+
     res.status(200).json(response);
   } catch (error) {
     console.error("Login error:", error);

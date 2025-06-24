@@ -37,6 +37,12 @@ export default function LoginPage() {
     try {
       const response = await login(data);
 
+      // Check if organization setup is required
+      if (response.requiresOrganizationSetup) {
+        router.push('/onboarding/organization');
+        return;
+      }
+
       // Redirect based on user role
       if (response.user.role === 'org_client') {
         router.push('/dashboard/client');

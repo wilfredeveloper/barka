@@ -23,8 +23,11 @@ exports.getTeamMembers = async (req, res) => {
       if (req.user.organization) {
         query.organization = req.user.organization;
       } else {
-        // If admin doesn't have organization, show team members they created
-        query.createdBy = req.user.id;
+        // SECURITY: Org admin without organization cannot access any team members
+        return res.status(403).json({
+          success: false,
+          message: "Access denied. User account is not associated with an organization.",
+        });
       }
     } else if (req.user.role === ROLES.ORG_CLIENT) {
       // Clients can only see team members from their organization
@@ -1208,7 +1211,11 @@ exports.searchTeamMembers = async (req, res) => {
       if (req.user.organization) {
         baseQuery.organization = req.user.organization;
       } else {
-        baseQuery.createdBy = req.user.id;
+        // SECURITY: Org admin without organization cannot search team members
+        return res.status(403).json({
+          success: false,
+          message: "Access denied. User account is not associated with an organization.",
+        });
       }
     } else if (req.user.role === ROLES.ORG_CLIENT) {
       // Clients can only search team members from their organization

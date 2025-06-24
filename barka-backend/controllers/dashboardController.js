@@ -26,6 +26,31 @@ exports.getDashboardData = async (req, res) => {
 
       // Check if organization ID is valid
       if (!organizationId) {
+        // For org_admin users without organization, return setup required response
+        if (req.user.role === ROLES.ORG_ADMIN) {
+          return res.status(200).json({
+            success: true,
+            requiresOrganizationSetup: true,
+            message: "Organization setup required",
+            data: {
+              stats: {
+                totalClients: 0,
+                activeClients: 0,
+                totalConversations: 0,
+                totalDocuments: 0,
+                totalDocumentSize: 0,
+                totalTeamMembers: 0,
+                activeTeamMembers: 0,
+                totalProjects: 0,
+                activeProjects: 0,
+              },
+              clients: [],
+              conversations: [],
+              documentTypes: [],
+            },
+          });
+        }
+
         return res.status(400).json({
           success: false,
           message: "User does not have an associated organization",

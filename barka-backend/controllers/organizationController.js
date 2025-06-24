@@ -303,6 +303,10 @@ exports.createOrganizationOnboarding = async (req, res) => {
     user.organization = organization._id;
     await user.save();
 
+    // Generate fresh auth response with updated user data
+    const { generateAuthResponse } = require("../utils/jwtUtils");
+    const authResponse = generateAuthResponse(user);
+
     res.status(201).json({
       success: true,
       data: {
@@ -316,6 +320,10 @@ exports.createOrganizationOnboarding = async (req, res) => {
           organization: organization._id,
         },
       },
+      // Include fresh token and user data for frontend to update localStorage
+      token: authResponse.token,
+      updatedUser: authResponse.user,
+      message: "Organization created successfully. You can now access your dashboard.",
     });
   } catch (error) {
     console.error("Onboarding error:", error);

@@ -3,6 +3,34 @@ const mongoose = require("mongoose");
 const Project = require("../models/Project");
 const TeamMember = require("../models/TeamMember");
 const Task = require("../models/Task");
+const { ROLES } = require("../models/User");
+
+/**
+ * Helper function to apply organization-based security filter
+ * CRITICAL SECURITY: Prevents users without organization from accessing any data
+ */
+const applyOrganizationFilter = (req, res, filter = {}) => {
+  if (req.user.role === ROLES.SUPER_ADMIN) {
+    // Super admin can see all data (no filter applied)
+    return { success: true, filter };
+  } else if (req.user.organization) {
+    // User has organization - apply organization filter
+    filter.organization = req.user.organization;
+    return { success: true, filter };
+  } else {
+    // SECURITY: User without organization cannot access any data
+    return {
+      success: false,
+      error: {
+        status: 403,
+        response: {
+          success: false,
+          message: "Access denied. User account is not associated with an organization.",
+        }
+      }
+    };
+  }
+};
 
 /**
  * @desc    Get all projects (client/org-scoped)
@@ -32,10 +60,12 @@ exports.getProjects = async (req, res) => {
     // Build filter based on user role and organization
     let filter = {};
 
-    // Organization scoping - users can only see projects from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own projects
     if (req.user.role === "client" && req.user.client) {
@@ -221,10 +251,12 @@ exports.getProject = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping
     if (req.user.role === "client" && req.user.client) {
@@ -286,10 +318,12 @@ exports.updateProject = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Find the project first
     const existingProject = await Project.findOne(filter);
@@ -465,10 +499,12 @@ exports.deleteProject = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     const project = await Project.findOne(filter)
       .populate("client", "firstName lastName email")
@@ -581,10 +617,12 @@ exports.recoverProject = async (req, res) => {
       status: "deleted"
     };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     const trashEntry = await Trash.findOne(filter);
     if (!trashEntry) {
@@ -659,10 +697,12 @@ exports.getProjectStats = async (req, res) => {
     // Build filter based on user role and organization
     let filter = {};
 
-    // Organization scoping - users can only see projects from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own projects
     if (req.user.client) {
@@ -789,9 +829,11 @@ exports.updateProjectStatus = async (req, res) => {
 
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter);
 
     if (!project) {
@@ -860,9 +902,11 @@ exports.updateProjectProgress = async (req, res) => {
   try {
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter);
 
     if (!project) {
@@ -917,9 +961,11 @@ exports.getProjectTasks = async (req, res) => {
 
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter);
 
     if (!project) {
@@ -934,9 +980,11 @@ exports.getProjectTasks = async (req, res) => {
       project: req.params.id,
     };
 
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    const taskAuthResult = applyOrganizationFilter(req, res, filter);
+    if (!taskAuthResult.success) {
+      return res.status(taskAuthResult.error.status).json(taskAuthResult.error.response);
     }
+    filter = taskAuthResult.filter;
 
     // Add optional filters
     if (status) filter.status = status;
@@ -1000,9 +1048,11 @@ exports.createProjectTask = async (req, res) => {
 
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter);
 
     if (!project) {
@@ -1095,9 +1145,11 @@ exports.getProjectTeam = async (req, res) => {
   try {
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter)
       .populate("teamMembers", "name email role status capacity workload performance");
 
@@ -1186,9 +1238,11 @@ exports.updateProjectTeam = async (req, res) => {
 
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter);
 
     if (!project) {
@@ -1281,9 +1335,11 @@ exports.getProjectTimeline = async (req, res) => {
   try {
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter);
 
     if (!project) {
@@ -1295,9 +1351,11 @@ exports.getProjectTimeline = async (req, res) => {
 
     // Get project tasks for timeline
     let taskFilter = { project: req.params.id };
-    if (req.user.organization) {
-      taskFilter.organization = req.user.organization;
+    const taskAuthResult = applyOrganizationFilter(req, res, taskFilter);
+    if (!taskAuthResult.success) {
+      return res.status(taskAuthResult.error.status).json(taskAuthResult.error.response);
     }
+    taskFilter = taskAuthResult.filter;
     const tasks = await Task.find(taskFilter)
       .populate("assignedTo", "name email")
       .sort({ startDate: 1, dueDate: 1 });
@@ -1374,9 +1432,11 @@ exports.updateProjectMilestones = async (req, res) => {
 
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter);
 
     if (!project) {
@@ -1427,9 +1487,11 @@ exports.getProjectDocuments = async (req, res) => {
   try {
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter)
       .populate("linkedDocuments", "title type status uploadedBy createdAt");
 
@@ -1479,9 +1541,11 @@ exports.updateProjectDocuments = async (req, res) => {
 
     // Check if project exists and user has access
     let projectFilter = { _id: req.params.id };
-    if (req.user.organization) {
-      projectFilter.organization = req.user.organization;
+    const authResult = applyOrganizationFilter(req, res, projectFilter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    projectFilter = authResult.filter;
     const project = await Project.findOne(projectFilter);
 
     if (!project) {
@@ -1568,10 +1632,12 @@ exports.searchProjects = async (req, res) => {
     // Build filter based on user role and organization
     let filter = {};
 
-    // Organization scoping - users can only see projects from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own projects
     if (req.user.role === "client" && req.user.client) {
@@ -1654,10 +1720,12 @@ exports.getProjectsByStatus = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { status };
 
-    // Organization scoping - users can only see projects from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own projects
     if (req.user.role === "client" && req.user.client) {
@@ -1724,10 +1792,12 @@ exports.getProjectsByPriority = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { priority };
 
-    // Organization scoping - users can only see projects from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own projects
     if (req.user.role === "client" && req.user.client) {
@@ -1796,10 +1866,12 @@ exports.getOverdueProjects = async (req, res) => {
       status: { $nin: ["completed", "cancelled"] }
     };
 
-    // Organization scoping - users can only see projects from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own projects
     if (req.user.role === "client" && req.user.client) {
@@ -1878,10 +1950,12 @@ exports.getProjectsDueSoon = async (req, res) => {
       status: { $nin: ["completed", "cancelled"] }
     };
 
-    // Organization scoping - users can only see projects from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own projects
     if (req.user.role === "client" && req.user.client) {
@@ -1953,10 +2027,12 @@ exports.getActiveProjects = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { status: "active" };
 
-    // Organization scoping - users can only see projects from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own projects
     if (req.user.role === "client" && req.user.client) {

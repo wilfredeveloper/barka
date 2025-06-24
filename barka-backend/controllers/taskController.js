@@ -2,6 +2,34 @@ const { validationResult } = require("express-validator");
 const Task = require("../models/Task");
 const Project = require("../models/Project");
 const TeamMember = require("../models/TeamMember");
+const { ROLES } = require("../models/User");
+
+/**
+ * Helper function to apply organization-based security filter
+ * CRITICAL SECURITY: Prevents users without organization from accessing any data
+ */
+const applyOrganizationFilter = (req, res, filter = {}) => {
+  if (req.user.role === ROLES.SUPER_ADMIN) {
+    // Super admin can see all data (no filter applied)
+    return { success: true, filter };
+  } else if (req.user.organization) {
+    // User has organization - apply organization filter
+    filter.organization = req.user.organization;
+    return { success: true, filter };
+  } else {
+    // SECURITY: User without organization cannot access any data
+    return {
+      success: false,
+      error: {
+        status: 403,
+        response: {
+          success: false,
+          message: "Access denied. User account is not associated with an organization.",
+        }
+      }
+    };
+  }
+};
 
 /**
  * @desc    Get all tasks (project/client-scoped)
@@ -33,10 +61,12 @@ exports.getTasks = async (req, res) => {
     // Build filter based on user role and organization
     let filter = {};
 
-    // Organization scoping - users can only see tasks from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own tasks
     if (req.user.role === "client" && req.user.client) {
@@ -285,8 +315,16 @@ exports.getTask = async (req, res) => {
     let filter = { _id: req.params.id };
 
     // Organization scoping
-    if (req.user.organization) {
+    if (req.user.role === ROLES.SUPER_ADMIN) {
+      // Super admin can see all tasks (no filter)
+    } else if (req.user.organization) {
       filter.organization = req.user.organization;
+    } else {
+      // SECURITY: Users without organization cannot access any tasks
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. User account is not associated with an organization.",
+      });
     }
 
     // Client scoping
@@ -348,10 +386,12 @@ exports.updateTask = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Find the task first
     const existingTask = await Task.findOne(filter);
@@ -486,10 +526,12 @@ exports.deleteTask = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     const task = await Task.findOne(filter);
     if (!task) {
