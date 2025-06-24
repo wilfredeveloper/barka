@@ -7,7 +7,8 @@ const {
   validateAdminPassword,
   registerWithOrganization,
   verifyEmail,
-  resendVerificationEmail
+  resendVerificationEmail,
+  testEmail
 } = require('../controllers/authController');
 const { protect, isAdmin } = require('../middleware/auth');
 const { registerValidator, loginValidator, validatePasswordValidator } = require('../middleware/validators');
@@ -38,6 +39,11 @@ router.post('/verify-email', [
 router.post('/resend-verification', [
   check('email', 'Please include a valid email').isEmail(),
 ], resendVerificationEmail);
+
+// Test email configuration (for debugging)
+router.post('/test-email', [
+  check('email', 'Please include a valid email').isEmail(),
+], testEmail);
 
 // Login route
 router.post('/login', loginValidator, login);

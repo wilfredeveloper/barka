@@ -109,10 +109,18 @@ exports.registerWithOrganization = async (req, res) => {
 
     // Send verification email (outside transaction)
     try {
-      await sendVerificationEmail(user, emailVerificationToken);
+      console.log('Attempting to send verification email to:', user.email);
+      const emailResult = await sendVerificationEmail(user, emailVerificationToken);
+      console.log('Verification email sent successfully:', emailResult);
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError);
-      // Don't fail the registration if email fails
+      // Log the full error for debugging
+      console.error('Email error details:', {
+        message: emailError.message,
+        stack: emailError.stack,
+        code: emailError.code
+      });
+      // Don't fail the registration if email fails, but log it
     }
 
     // Return success response
@@ -161,6 +169,58 @@ exports.registerWithOrganization = async (req, res) => {
     });
   } finally {
     session.endSession();
+  }
+};
+
+/**
+ * @desc    Test email configuration
+ * @route   POST /api/auth/test-email
+ * @access  Public (for testing only)
+ */
+exports.testEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required for testing",
+      });
+    }
+
+    // Generate a test verification token
+    const testToken = generateVerificationToken();
+
+    // Create a test user object
+    const testUser = {
+      firstName: 'Test',
+      lastName: 'User',
+      email: email
+    };
+
+    // Try to send verification email
+    console.log('Testing email configuration...');
+    const emailResult = await sendVerificationEmail(testUser, testToken);
+
+    res.json({
+      success: true,
+      message: "Test email sent successfully!",
+      emailResult: emailResult,
+      testToken: testToken // Include for testing purposes
+    });
+
+  } catch (error) {
+    console.error("Email test error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send test email",
+      error: error.message,
+      details: {
+        code: error.code,
+        command: error.command,
+        response: error.response
+      }
+    });
   }
 };
 

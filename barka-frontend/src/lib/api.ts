@@ -42,6 +42,25 @@ api.interceptors.response.use(
       url: error.config?.url,
       method: error.config?.method,
     });
+
+    // Handle authentication errors
+    if (error.response?.status === 401) {
+      // Clear auth data and redirect to login
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/auth/login';
+      }
+    } else if (error.response?.status === 403 && error.response?.data?.requiresEmailVerification) {
+      // Handle email verification required
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        const email = error.response.data.userEmail;
+        window.location.href = '/auth/verify-email' + (email ? '?email=' + encodeURIComponent(email) : '');
+      }
+    }
+
     return Promise.reject(error);
   }
 );

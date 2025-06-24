@@ -41,6 +41,17 @@ exports.protect = async (req, res, next) => {
       });
     }
 
+    // SECURITY: Check if email is verified (except for specific endpoints)
+    const exemptPaths = ['/api/auth/verify-email', '/api/auth/resend-verification'];
+    if (!user.isEmailVerified && !exemptPaths.includes(req.path)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Email verification required. Please check your email and verify your account.',
+        requiresEmailVerification: true,
+        userEmail: user.email
+      });
+    }
+
     // Add user to request object
     req.user = user;
     next();

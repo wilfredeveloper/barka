@@ -19,8 +19,25 @@ exports.generatePasswordResetToken = () => {
  * Create email transporter based on environment
  */
 const createTransporter = () => {
-  if (process.env.NODE_ENV === 'production') {
-    // Production email configuration (e.g., SendGrid, AWS SES, etc.)
+  // Use configured email settings from .env
+  if (process.env.EMAIL_HOST && process.env.EMAIL_USERNAME && process.env.EMAIL_PASSWORD) {
+    console.log('Using configured email settings:', {
+      host: process.env.EMAIL_HOST,
+      port: process.env.EMAIL_PORT,
+      user: process.env.EMAIL_USERNAME
+    });
+
+    return nodemailer.createTransporter({
+      host: process.env.EMAIL_HOST,
+      port: parseInt(process.env.EMAIL_PORT) || 587,
+      secure: false, // true for 465, false for other ports
+      auth: {
+        user: process.env.EMAIL_USERNAME,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    });
+  } else if (process.env.NODE_ENV === 'production') {
+    // Fallback production email configuration
     return nodemailer.createTransporter({
       service: process.env.EMAIL_SERVICE || 'gmail',
       auth: {
@@ -30,6 +47,7 @@ const createTransporter = () => {
     });
   } else {
     // Development: Use Ethereal Email for testing
+    console.log('Using Ethereal email for development');
     return nodemailer.createTransporter({
       host: 'smtp.ethereal.email',
       port: 587,
@@ -51,7 +69,7 @@ exports.sendVerificationEmail = async (user, verificationToken) => {
     const verificationUrl = `${process.env.FRONTEND_URL}/auth/verify-email?token=${verificationToken}&email=${encodeURIComponent(user.email)}`;
     
     const mailOptions = {
-      from: process.env.FROM_EMAIL || 'noreply@barka.com',
+      from: process.env.EMAIL_USERNAME || process.env.FROM_EMAIL || 'noreply@barka.com',
       to: user.email,
       subject: 'Verify Your Barka Account',
       html: `
@@ -128,7 +146,7 @@ exports.sendOrganizationSetupCompleteEmail = async (user, organization) => {
     const dashboardUrl = `${process.env.FRONTEND_URL}/dashboard`;
     
     const mailOptions = {
-      from: process.env.FROM_EMAIL || 'noreply@barka.com',
+      from: process.env.EMAIL_USERNAME || process.env.FROM_EMAIL || 'noreply@barka.com',
       to: user.email,
       subject: 'Organization Setup Complete - Welcome to Barka!',
       html: `
@@ -204,7 +222,7 @@ exports.sendPasswordResetEmail = async (user, resetToken) => {
     const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
     
     const mailOptions = {
-      from: process.env.FROM_EMAIL || 'noreply@barka.com',
+      from: process.env.EMAIL_USERNAME || process.env.FROM_EMAIL || 'noreply@barka.com',
       to: user.email,
       subject: 'Reset Your Barka Password',
       html: `
