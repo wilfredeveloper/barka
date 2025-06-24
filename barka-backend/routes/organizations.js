@@ -4,6 +4,11 @@ const { check } = require("express-validator");
 const organizationController = require("../controllers/organizationController");
 const { protect, authorize } = require("../middleware/auth");
 const { ROLES } = require("../models/User");
+const {
+  requireCompleteProfile,
+  requireOrganizationAccess,
+  canCreateOrganization
+} = require("../middleware/profileValidation");
 
 // @route   GET /api/organizations
 // @desc    Get all organizations
@@ -40,7 +45,8 @@ router.post(
 router.post(
   "/onboarding",
   [
-    protect, // Only check if user is authenticated, don't check role
+    protect,
+    canCreateOrganization, // Validates user can create organization
     check("organizationName", "Organization name is required").not().isEmpty(),
     check("organizationType", "Organization type is required").not().isEmpty(),
   ],

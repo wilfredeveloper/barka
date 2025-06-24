@@ -14,6 +14,17 @@ export interface RegisterData {
   organizationId?: string;
 }
 
+export interface RegisterWithOrganizationData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  organizationName: string;
+  organizationType: string;
+  teamSize: string;
+  clientsPerMonth: string;
+}
+
 export interface AuthResponse {
   success: boolean;
   token: string;
@@ -46,8 +57,34 @@ export const register = async (data: RegisterData): Promise<AuthResponse> => {
   if (response.data.token) {
     localStorage.setItem('token', response.data.token);
     localStorage.setItem('user', JSON.stringify(response.data.user));
+    localStorage.setItem('userTimestamp', Date.now().toString());
   }
 
+  return response.data;
+};
+
+export const registerWithOrganization = async (data: RegisterWithOrganizationData): Promise<AuthResponse> => {
+  const response = await api.post<AuthResponse>('/auth/register-with-organization', data);
+
+  // Note: Don't store token here as email verification is required
+  return response.data;
+};
+
+export const verifyEmail = async (token: string, email: string): Promise<AuthResponse> => {
+  const response = await api.post<AuthResponse>('/auth/verify-email', { token, email });
+
+  // Store token in localStorage after successful verification
+  if (response.data.token) {
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('user', JSON.stringify(response.data.user));
+    localStorage.setItem('userTimestamp', Date.now().toString());
+  }
+
+  return response.data;
+};
+
+export const resendVerificationEmail = async (email: string): Promise<{ success: boolean; message: string }> => {
+  const response = await api.post('/auth/resend-verification', { email });
   return response.data;
 };
 

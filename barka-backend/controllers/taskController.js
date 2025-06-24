@@ -613,10 +613,12 @@ exports.updateTaskStatus = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own tasks
     if (req.user.role === "client") {
@@ -688,10 +690,12 @@ exports.assignTask = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     const task = await Task.findOne(filter);
     if (!task) {
@@ -771,10 +775,12 @@ exports.updateTaskProgress = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own tasks
     if (req.user.role === "client") {
@@ -873,10 +879,12 @@ exports.addTaskComment = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own tasks
     if (req.user.role === "client") {
@@ -939,10 +947,12 @@ exports.getTaskComments = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own tasks
     if (req.user.role === "client") {
@@ -997,10 +1007,12 @@ exports.logTaskTime = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     const task = await Task.findOne(filter);
     if (!task) {
@@ -1094,10 +1106,12 @@ exports.getTaskHistory = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own tasks
     if (req.user.role === "client") {
@@ -1158,10 +1172,12 @@ exports.updateTaskDependencies = async (req, res) => {
     // Build filter based on user role and organization
     let filter = { _id: req.params.id };
 
-    // Organization scoping
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     const task = await Task.findOne(filter);
     if (!task) {
@@ -1290,10 +1306,12 @@ exports.searchTasks = async (req, res) => {
     // Build base filter with organization/client scoping
     let filter = {};
 
-    // Organization scoping - users can only see tasks from their organization
-    if (req.user.organization) {
-      filter.organization = req.user.organization;
+    // Apply organization-based security filter
+    const authResult = applyOrganizationFilter(req, res, filter);
+    if (!authResult.success) {
+      return res.status(authResult.error.status).json(authResult.error.response);
     }
+    filter = authResult.filter;
 
     // Client scoping - clients can only see their own tasks
     if (req.user.role === "client" && req.user.client) {
