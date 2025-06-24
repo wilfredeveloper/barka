@@ -313,7 +313,7 @@ export default function BarkaSpaceOSPage() {
       // Use the same pattern as project manager test page
       const conversationPayload: any = {
         title: `Barka Space OS - ${new Date().toLocaleString()}`,
-        organizationId: user.organization,
+        organizationId: user.organization._id,
         conversationType: 'admin'
       };
 

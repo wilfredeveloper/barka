@@ -27,7 +27,7 @@ const createTransporter = () => {
       user: process.env.EMAIL_USERNAME
     });
 
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
       port: parseInt(process.env.EMAIL_PORT) || 587,
       secure: false, // true for 465, false for other ports
@@ -38,7 +38,7 @@ const createTransporter = () => {
     });
   } else if (process.env.NODE_ENV === 'production') {
     // Fallback production email configuration
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
       service: process.env.EMAIL_SERVICE || 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
@@ -48,7 +48,7 @@ const createTransporter = () => {
   } else {
     // Development: Use Ethereal Email for testing
     console.log('Using Ethereal email for development');
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
       host: 'smtp.ethereal.email',
       port: 587,
       auth: {
