@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 import api from '@/lib/api';
 
-export default function VerifyEmailPage() {
+function VerifyEmailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'resending'>('loading');
@@ -152,12 +152,12 @@ export default function VerifyEmailPage() {
                 </div>
               )}
 
-              {status === 'error' && email && (
+              {(status === 'error' || status === 'resending') && email && (
                 <div className="space-y-3">
                   <p className="text-sm text-gray-400">
                     Need a new verification link?
                   </p>
-                  <Button 
+                  <Button
                     onClick={resendVerification}
                     variant="outline"
                     className="border-gray-800 text-white hover:bg-gray-800"
@@ -195,5 +195,14 @@ export default function VerifyEmailPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+
+export default function VerifyEmailPageWrapper() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <VerifyEmailPage />
+    </Suspense>
   );
 }
