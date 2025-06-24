@@ -10,86 +10,19 @@ const {
 } = require("../utils/emailVerification");
 
 /**
- * @desc    Register a new user
+ * @desc    Register a new user (LEGACY - DEPRECATED)
  * @route   POST /api/auth/register
  * @access  Public
+ * @deprecated Use /api/auth/register-with-organization for secure registration
  */
 exports.register = async (req, res) => {
-  try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
-    }
-
-    console.log("Registration request body:", req.body);
-    const { firstName, lastName, email, password, role, organizationId } =
-      req.body;
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User with this email already exists",
-      });
-    }
-
-    // For organization clients, check if organization exists
-    // Organization admins can sign up without an organization initially
-    if (role === ROLES.ORG_CLIENT && !organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Organization ID is required for organization clients",
-      });
-    }
-
-    // If organization client, verify organization exists
-    if (role === ROLES.ORG_CLIENT && organizationId) {
-      const organization = await Organization.findById(organizationId);
-      if (!organization) {
-        return res.status(404).json({
-          success: false,
-          message: "Organization not found",
-        });
-      }
-    }
-
-    // Create user with explicit field mapping
-    const userData = {
-      firstName: firstName,
-      lastName: lastName,
-      email: email,
-      password: password,
-      role: role || ROLES.ORG_CLIENT,
-      // Only set organization for org clients or if organizationId is provided
-      organization:
-        role === ROLES.ORG_CLIENT || organizationId
-          ? organizationId
-          : undefined,
-    };
-
-    console.log("Creating user with data:", userData);
-    const user = await User.create(userData);
-
-    // Generate token and send response
-    let response = generateAuthResponse(user);
-
-    // For org_admin users without organization, indicate they need to complete setup
-    if (user.role === ROLES.ORG_ADMIN && !user.organization) {
-      response.requiresOrganizationSetup = true;
-      response.message = "Account created successfully. Please complete organization setup.";
-    }
-
-    res.status(201).json(response);
-  } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error during registration",
-      error: error.message,
-    });
-  }
+  // SECURITY: Redirect to secure registration method
+  return res.status(410).json({
+    success: false,
+    message: "This registration method is deprecated for security reasons. Please use the new secure registration.",
+    redirectTo: "/auth/register-organization",
+    useEndpoint: "/api/auth/register-with-organization"
+  });
 };
 
 /**
