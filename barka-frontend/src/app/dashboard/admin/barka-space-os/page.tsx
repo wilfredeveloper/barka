@@ -309,11 +309,12 @@ export default function BarkaSpaceOSPage() {
       setIsSending(true);
 
       console.log('Creating new conversation for admin user:', user.id);
+      console.log('User organization:', user.organization);
 
       // Use the same pattern as project manager test page
       const conversationPayload: any = {
         title: `Barka Space OS - ${new Date().toLocaleString()}`,
-        organizationId: user.organization._id,
+        organizationId: user.organization,
         conversationType: 'admin'
       };
 
