@@ -6,6 +6,43 @@ const bcrypt = require("bcrypt");
 const emailService = require("../utils/emailService");
 
 /**
+ * Generate a user-friendly password for client accounts
+ * Format: 6 characters with 1 capital letter, 1 special character, 1 digit
+ * Example: A1b@c2, B3x#d4, etc.
+ */
+function generateClientPassword() {
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const digits = '0123456789';
+  const special = '@#$%&*!';
+
+  // Ensure we have at least one of each required type
+  const requiredChars = [
+    uppercase[Math.floor(Math.random() * uppercase.length)], // 1 uppercase
+    digits[Math.floor(Math.random() * digits.length)],       // 1 digit
+    special[Math.floor(Math.random() * special.length)]      // 1 special char
+  ];
+
+  // Fill remaining 3 positions with random characters from all sets
+  const allChars = lowercase + uppercase + digits + special;
+  const remainingChars = [];
+  for (let i = 0; i < 3; i++) {
+    remainingChars.push(allChars[Math.floor(Math.random() * allChars.length)]);
+  }
+
+  // Combine and shuffle all characters
+  const allPasswordChars = [...requiredChars, ...remainingChars];
+
+  // Shuffle the array to randomize position of required characters
+  for (let i = allPasswordChars.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allPasswordChars[i], allPasswordChars[j]] = [allPasswordChars[j], allPasswordChars[i]];
+  }
+
+  return allPasswordChars.join('');
+}
+
+/**
  * @desc    Get all users (filtered by organization for org admins)
  * @route   GET /api/users
  * @access  Private (Admin only)
@@ -294,10 +331,10 @@ exports.createUser = async (req, res) => {
       }
     }
 
-    // Generate a random password
-    const tempPassword = crypto.randomBytes(8).toString("hex");
+    // Generate a secure but user-friendly password
+    const tempPassword = generateClientPassword();
 
-    // Create user
+    // Create user - auto-verify client accounts since they're created by trusted org admins
     const userData = {
       firstName,
       lastName,
@@ -305,6 +342,10 @@ exports.createUser = async (req, res) => {
       password: tempPassword,
       role: role || ROLES.ORG_CLIENT,
       organization: organizationId,
+      // Auto-verify client accounts created by org admins
+      isEmailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationExpires: null,
     };
 
     const user = await User.create(userData);
@@ -339,7 +380,7 @@ exports.createUser = async (req, res) => {
       success: true,
       data: userResponse,
       message:
-        "User created successfully. A temporary password has been generated.",
+        "Client account created successfully. The account is verified and ready to use. Login credentials have been sent via email.",
     });
   } catch (error) {
     console.error("Create user error:", error);
