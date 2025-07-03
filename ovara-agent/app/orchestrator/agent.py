@@ -251,7 +251,7 @@ gaia_system_prompt = f"""
 # Create Gaia - the main orchestrator agent using hierarchical multi-agent pattern
 root_agent = Agent(
     name="Gaia",
-    model="gemini-2.0-flash-exp",
+    model="gemini-2.5-pro",
     description="Gaia - the central orchestrator for the Orka PRO platform, coordinating specialized department agents for comprehensive project delivery.",
     instruction=gaia_system_prompt,
     sub_agents=[

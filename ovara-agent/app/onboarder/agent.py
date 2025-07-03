@@ -94,7 +94,7 @@ organizations_collection = db["organizations"]
 
 root_agent = Agent(
     name="barka",
-    model="gemini-2.0-flash-exp",
+    model="gemini-2.5-pro",
     description="Handles client onboarding, project information management, and requirement gathering for design and software agencies.",
     instruction=barka_system_prompt,
     tools=[

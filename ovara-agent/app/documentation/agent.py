@@ -214,7 +214,7 @@ Your goal is to deliver comprehensive, professional documentation that establish
 
 root_agent = Agent(
     name="documentation_agent",
-    model="gemini-2.0-flash-exp",
+    model="gemini-2.5-pro",
     description="Specializes in generating comprehensive project documentation including SRS, contracts, proposals, and technical specifications for professional project delivery.",
     instruction=documentation_system_prompt,
     tools=[
